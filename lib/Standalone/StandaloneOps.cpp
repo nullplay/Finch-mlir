@@ -8,6 +8,7 @@
 
 #include "Standalone/StandaloneOps.h"
 #include "Standalone/StandaloneDialect.h"
+#include "Standalone/StandaloneTypes.h"
 
 #define GET_OP_CLASSES
 #include "Standalone/StandaloneOps.cpp.inc"

@@ -40,4 +40,36 @@ def Standalone_FooOp : Standalone_Op<"foo", [Pure,
     }];
 }
 
+
+def Standalone_AccessOp : Standalone_Op<"access", [Pure]> {
+    let summary = "Finch Access op";
+    let description = [{
+        ```mlir
+        %2 = standalone.access %0 %1 : Looplet, index
+        ```
+    }];
+
+    let arguments = (ins Looplets:$input, Index:$idx); 
+    let results = (outs AnyNumber:$res);
+
+    let assemblyFormat = [{
+        $input $idx attr-dict `:` type($input) `,` type($idx) `to` type(results)
+    }];
+}
+
+def Standalone_RunOp : Standalone_Op<"run", [Pure]> {
+    let summary = "Finch Run Looplets";
+    let description = [{
+        ```mlir
+        %3 = standalone.run %lb %ub %val : i32, i32, f32 -> looplet
+        ```
+    }];
+
+    let arguments = (ins I32:$lb, I32:$ub, AnyNumber:$val); 
+    let results = (outs Looplets:$res);
+
+    let assemblyFormat = [{
+        $lb $ub $val attr-dict `:` type($lb) `,` type($ub) `,` type($val) `to` type(results)
+    }];
+}
 #endif // STANDALONE_OPS

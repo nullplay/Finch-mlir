@@ -10,6 +10,7 @@
 #define STANDALONE_TYPES
 
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/CommonTypeConstraints.td"
 include "Standalone/StandaloneDialect.td"
 
 //===----------------------------------------------------------------------===//
@@ -27,5 +28,16 @@ def Standalone_CustomType : Standalone_Type<"Custom", "custom"> {
     let parameters = (ins StringRefParameter<"the custom value">:$value);
     let assemblyFormat = "`<` $value `>`";
 }
+
+
+def AnyNumber : TypeConstraint<Or<[AnyInteger.predicate, AnyFloat.predicate]>, "anynumber">;
+
+def Standalone_LoopletType : Standalone_Type<"Looplets", "looplet"> {
+    let summary = "Standalone Looplets type";
+    let description = "Looplets type in standalone dialect";
+
+}
+
+def Looplets : AnyTypeOf<[Standalone_LoopletType]>;
 
 #endif // STANDALONE_TYPES
