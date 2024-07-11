@@ -35,7 +35,8 @@ def AnyNumber : TypeConstraint<Or<[AnyInteger.predicate, AnyFloat.predicate]>, "
 def Standalone_LoopletType : Standalone_Type<"Looplets", "looplet"> {
     let summary = "Standalone Looplets type";
     let description = "Looplets type in standalone dialect";
-
+    //let parameters = (ins "int":$lb, "int":$ub);
+    //let assemblyFormat = "`<` $lb `,` $ub `>`";
 }
 
 def Looplets : AnyTypeOf<[Standalone_LoopletType]>;

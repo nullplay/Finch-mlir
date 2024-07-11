@@ -9,11 +9,16 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Affine/LoopUtils.h"
 
 #include "Standalone/StandalonePasses.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace mlir::standalone {
 #define GEN_PASS_DEF_STANDALONESWITCHBARFOO
+#define GEN_PASS_DEF_STANDALONELOOPLETRUN
 #include "Standalone/StandalonePasses.h.inc"
 
 namespace {
@@ -30,6 +35,51 @@ public:
   }
 };
 
+class StandaloneLoopletRunRewriter : public OpRewritePattern<affine::AffineForOp> {
+public:
+  using OpRewritePattern<affine::AffineForOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(affine::AffineForOp op,
+                                PatternRewriter &rewriter) const final {
+    auto indVar = op.getInductionVar();
+    auto forLb = op.getLowerBoundOperands(); 
+    auto forUb = op.getUpperBoundOperands(); 
+
+    for (auto& bodyOp : *op.getBody()) {
+      if (isa<mlir::standalone::AccessOp>(bodyOp)) {
+        auto accessVar = bodyOp.getOperand(1);
+        if (accessVar == indVar) {
+          auto runLooplet = bodyOp.getOperand(0).getDefiningOp<standalone::RunOp>();
+          if (!runLooplet) {
+            bodyOp.emitWarning() << "No Run Looplet";
+            return failure();
+          }
+          auto runValue = runLooplet.getOperand(2).getDefiningOp<arith::ConstantFloatOp>(); 
+          if (!runValue) {
+            bodyOp.emitWarning() << "No Constant: ";
+            return failure();
+          }
+          
+          auto runLb = runLooplet.getOperand(0);
+          auto runUb = runLooplet.getOperand(1);
+          
+
+
+          //auto newConstant = rewriter.create<arith::ConstantFloatOp>(runValue.getLoc(), runValue.value(), rewriter.getF32Type());
+
+          //rewriter.eraseOp(&bodyOp);
+          //rewriter.replaceOp(&bodyOp, newConstant);
+          rewriter.replaceOp(&bodyOp, runValue);
+
+          return success();
+        }
+      }
+    }
+    
+    return failure();
+  }
+};
+
+
 class StandaloneSwitchBarFoo
     : public impl::StandaloneSwitchBarFooBase<StandaloneSwitchBarFoo> {
 public:
@@ -38,10 +88,29 @@ public:
   void runOnOperation() final {
     RewritePatternSet patterns(&getContext());
     patterns.add<StandaloneSwitchBarFooRewriter>(&getContext());
-    FrozenRewritePatternSet patternSet(std::move(patterns));
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
-      signalPassFailure();
+    patterns.add<StandaloneLoopletRunRewriter>(&getContext());
+    
+    applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    
+    //FrozenRewritePatternSet patternSet(std::move(patterns));
+    //if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
+    //  signalPassFailure();
   }
 };
+
+class StandaloneLoopletRun
+    : public impl::StandaloneLoopletRunBase<StandaloneLoopletRun> {
+public:
+  using impl::StandaloneLoopletRunBase<
+      StandaloneLoopletRun>::StandaloneLoopletRunBase;
+  void runOnOperation() final {
+    //RewritePatternSet patterns(&getContext());
+    //patterns.add<StandaloneLoopletRunRewriter>(&getContext());
+    //FrozenRewritePatternSet patternSet(std::move(patterns));
+    //if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
+    //  signalPassFailure();
+  }
+};
+
 } // namespace
 } // namespace mlir::standalone
