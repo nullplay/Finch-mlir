@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
   mlir::TranslateFromMLIRRegistration withdescription(
       "option", "different from option",
       [](mlir::Operation *op, llvm::raw_ostream &output) {
-        return llvm::LogicalResult::success();
+        return mlir::LogicalResult::success();
       },
       [](mlir::DialectRegistry &a) {});
 
