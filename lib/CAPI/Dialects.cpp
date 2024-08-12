@@ -6,10 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Standalone-c/Dialects.h"
+#include "Finch-c/Dialects.h"
 
-#include "Standalone/StandaloneDialect.h"
+#include "Finch/FinchDialect.h"
 #include "mlir/CAPI/Registration.h"
 
-MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Standalone, standalone,
-                                      mlir::standalone::StandaloneDialect)
+MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Finch, finch,
+                                      mlir::finch::FinchDialect)

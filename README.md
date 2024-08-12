@@ -1,6 +1,6 @@
 # An out-of-tree MLIR dialect
 
-This is an example of an out-of-tree [MLIR](https://mlir.llvm.org/) dialect along with a standalone `opt`-like tool to operate on that dialect.
+This is an example of an out-of-tree [MLIR](https://mlir.llvm.org/) dialect along with a finch `opt`-like tool to operate on that dialect.
 
 ## Building - Component Build
 
@@ -8,7 +8,7 @@ This setup assumes that you have built LLVM and MLIR in `$BUILD_DIR` and install
 ```sh
 mkdir build && cd build
 cmake -G Ninja .. -DMLIR_DIR=$PREFIX/lib/cmake/mlir -DLLVM_EXTERNAL_LIT=$BUILD_DIR/bin/llvm-lit
-cmake --build . --target check-standalone
+cmake --build . --target check-finch
 ```
 To build the documentation from the TableGen description of the dialect operations, run
 ```sh
@@ -26,7 +26,7 @@ cmake -G Ninja `$LLVM_SRC_DIR/llvm` \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_TARGETS_TO_BUILD=host \
     -DLLVM_ENABLE_PROJECTS=mlir \
-    -DLLVM_EXTERNAL_PROJECTS=standalone-dialect -DLLVM_EXTERNAL_STANDALONE_DIALECT_SOURCE_DIR=../
-cmake --build . --target check-standalone
+    -DLLVM_EXTERNAL_PROJECTS=finch-dialect -DLLVM_EXTERNAL_FINCH_DIALECT_SOURCE_DIR=../
+cmake --build . --target check-finch
 ```
 Here, `$LLVM_SRC_DIR` needs to point to the root of the monorepo.

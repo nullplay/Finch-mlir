@@ -1,4 +1,4 @@
-// RUN: standalone-opt %s | standalone-opt | FileCheck %s
+// RUN: finch-opt %s | finch-opt | FileCheck %s
 
 module {
     func.func @test(%buffer : memref<4xf32>, %b0:index, %b1:index, %int_1:i32) -> (f32) {
@@ -9,9 +9,9 @@ module {
      
 
       %sum = affine.for %i = %b0 to %b1 iter_args(%sum_iter = %sum_0) -> f32 {
-        %3 = standalone.run %int_1, %int_1, %fp_2 : (i32, i32, f32) -> (!standalone.looplet)
-        %5 = standalone.sequence %int_1, %int_1, %3, %3 : (i32, i32, !standalone.looplet, !standalone.looplet) -> (!standalone.looplet)
-        %4 = standalone.access %5, %i : f32
+        %3 = finch.run %int_1, %int_1, %fp_2 : (i32, i32, f32) -> (!finch.looplet)
+        %5 = finch.sequence %int_1, %int_1, %3, %3 : (i32, i32, !finch.looplet, !finch.looplet) -> (!finch.looplet)
+        %4 = finch.access %5, %i : f32
 
         //%t = affine.load %buffer[%i] : memref<4xf32>
         //%sum_next = arith.addf %sum_iter, %t : f32

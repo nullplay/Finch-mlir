@@ -1,20 +1,20 @@
 # Here we create a single aggregate shared library with the parts of the CAPI
 # that we want to bundle together. Then we link a simple C executable
 # against it to demonstrate that it does have the fully self contained
-# core MLIR library and our own standalone dialect.
-add_mlir_aggregate(StandaloneCAPITestLib
+# core MLIR library and our own finch dialect.
+add_mlir_aggregate(FinchCAPITestLib
   SHARED
   EMBED_LIBS
   MLIRCAPIIR
   # TODO: Remove this in favor of showing fine grained dialect registration
   # (once available).
   MLIRCAPIRegisterEverything
-  StandaloneCAPI
+  FinchCAPI
 )
 
-add_llvm_executable(standalone-capi-test
-  standalone-capi-test.c
+add_llvm_executable(finch-capi-test
+  finch-capi-test.c
 )
-llvm_update_compile_flags(standalone-capi-test)
-target_link_libraries(standalone-capi-test
-  PRIVATE StandaloneCAPITestLib)
+llvm_update_compile_flags(finch-capi-test)
+target_link_libraries(finch-capi-test
+  PRIVATE FinchCAPITestLib)
