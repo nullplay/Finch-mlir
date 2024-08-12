@@ -63,4 +63,16 @@ def FinchLoopletRun: Pass<"finch-looplet-run"> {
   }];
 }
 
+
+def FinchLoopletSequence: Pass<"finch-looplet-sequence"> {
+  let summary = "Compiler Pass for Sequence Looplets";
+  let description = [{
+    Compiler Pass for handling sequence looplets
+    ```
+    to be filled.
+
+    ```
+  }];
+}
+
 #endif // FINCH_PASS
