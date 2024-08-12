@@ -41,27 +41,9 @@ public:
   LogicalResult matchAndRewrite(affine::AffineForOp op,
                                 PatternRewriter &rewriter) const final {
     auto indVar = op.getInductionVar();
-    auto forUb = op.getUpperBoundOperands(); 
     
-    AffineMap orgmap, newmap; 
     OpBuilder builder(op);
     Location loc = op.getLoc();
-   
-    orgmap = (op.getLowerBound().getMap());
-   
-    //llvm::outs() << "hello" << "\n" << op.getLowerBoundOperands().size();
-    //llvm::outs() << orgmap.getNumDims() << " vs " << orgmap.getNumSymbols() << "\n";
-    //llvm::outs() << newmap << "\n";
-    
-
-    llvm::outs() << "Hi \n" ;
-
-    //if (op.hasConstantLowerBound()) {
-    //  llvm::outs() << op.getConstantLowerBound() << "\n";
-    //} else {
-    //  auto forLb = op.getLowerBoundOperands(); 
-    //  llvm::outs() << forLb[0] << "\n";
-    //}
 
     for (auto& bodyOp : *op.getBody()) {
       if (isa<mlir::standalone::AccessOp>(bodyOp)) {
@@ -71,31 +53,47 @@ public:
           if (!runLooplet) {
             bodyOp.emitWarning() << "No Run Looplet";
             continue;
-            //return failure();
           }
-          auto runValue = runLooplet.getOperand(2).getDefiningOp(); 
-          
-          auto runLb = runLooplet.getOperand(0);
-          auto loopLb = op.getLowerBoundOperands()[0];
-          auto runUb = runLooplet.getOperand(1);
-
-          // Setup New Map
+         
+          // Setup New Map for Min/Max
           SmallVector<AffineExpr, 4> Exprs;
           Exprs.push_back(builder.getAffineSymbolExpr(0));
           Exprs.push_back(builder.getAffineSymbolExpr(1));
-          newmap = AffineMap::get(orgmap.getNumDims(), 2, Exprs, builder.getContext());
+          AffineMap newmap = AffineMap::get(
+              0, /* NumDims */ 
+              2, /* NumSymbols */ 
+              Exprs, builder.getContext());
 
-          //Setup New Operands
-          SmallVector<Value, 4> newoperands;
-          newoperands.push_back(loopLb);
-          
-          auto newrunLb = rewriter.create<arith::IndexCastOp>(loc, rewriter.getIndexType(), runLb);
-          newoperands.push_back(newrunLb);
-          
-          auto newLb = rewriter.create<affine::AffineMaxOp>(loc, newmap, newoperands);
-          ValueRange newLbOperands = ValueRange(newLb);
+          // Setup New Operands for Min/Max
+          SmallVector<Value, 4> lowerBoundOperands;
+          SmallVector<Value, 4> upperBoundOperands;
+          Value forLb = op.getLowerBoundOperands()[0];
+          Value forUb = op.getUpperBoundOperands()[0];
+          Value runLb = runLooplet.getOperand(0);
+          Value runUb = runLooplet.getOperand(1);
+          Value runLbToIndex = rewriter.create<arith::IndexCastOp>(
+              loc, rewriter.getIndexType(), runLb); /* number->index */
+          Value runUbToIndex = rewriter.create<arith::IndexCastOp>(
+              loc, rewriter.getIndexType(), runUb); /* number->index */
+          lowerBoundOperands.push_back(forLb);
+          lowerBoundOperands.push_back(runLbToIndex);
+          upperBoundOperands.push_back(forUb);
+          upperBoundOperands.push_back(runUbToIndex);
+         
+          //Intersect Loop and Run Bound 
+          Value newLb = rewriter.create<affine::AffineMaxOp>(
+              loc, newmap, lowerBoundOperands);
+          Value newUb = rewriter.create<affine::AffineMinOp>(
+              loc, newmap, upperBoundOperands);
 
-          op.setLowerBound(newLbOperands, orgmap);
+          // Update AffineFor Bounds
+          AffineMap origLowerMap = op.getLowerBound().getMap();
+          AffineMap origUpperMap = op.getUpperBound().getMap();
+          op.setLowerBound(ValueRange(newLb), origLowerMap);
+          op.setUpperBound(ValueRange(newUb), origUpperMap);
+          
+          // Replace Access to Run Value
+          Value runValue = runLooplet.getOperand(2); 
           rewriter.replaceOp(&bodyOp, runValue);
 
           return success();
