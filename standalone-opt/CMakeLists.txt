@@ -1,11 +1,22 @@
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+
+set(test_libs
+  MLIRTestDialect
+  MLIRTestPDLL
+  MLIRTestPass
+  MLIRLLVMTestPasses
+  MLIRTestRewrite
+  )
+
 set(LIBS
         ${dialect_libs}
         ${conversion_libs}
+        ${test_libs}
         MLIRArithDialect
         MLIRIndexDialect
         MLIROptLib
+        MLIRPass
         MLIRStandalone
         )
 add_llvm_executable(standalone-opt standalone-opt.cpp)

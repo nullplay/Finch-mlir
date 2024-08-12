@@ -32,9 +32,9 @@ module {
         %3 = standalone.run %int_1 %int_1 %fp_2 : i32, i32, f32 to !standalone.looplet
         %4 = standalone.access %3 %i : !standalone.looplet, index to f32
 
-        %t = affine.load %buffer[%i] : memref<4xf32>
-        %sum_next = arith.addf %sum_iter, %t : f32
-        %sum_next2 = arith.addf %sum_next, %4 : f32
+        //%t = affine.load %buffer[%i] : memref<4xf32>
+        //%sum_next = arith.addf %sum_iter, %t : f32
+        %sum_next2 = arith.addf %sum_iter, %4 : f32
         
         affine.yield %sum_next2 : f32
       }
