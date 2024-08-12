@@ -9,6 +9,7 @@
 #ifndef STANDALONE_OPS
 #define STANDALONE_OPS
 
+include "Standalone/StandaloneDialect.td"
 include "Standalone/StandaloneTypes.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -49,11 +50,11 @@ def Standalone_AccessOp : Standalone_Op<"access", [Pure]> {
         ```
     }];
 
-    let arguments = (ins Looplets:$input, Index:$idx); 
+    let arguments = (ins Standalone_LoopletType:$input, Index:$idx); 
     let results = (outs AnyNumber:$res);
 
     let assemblyFormat = [{
-        $input $idx attr-dict `:` type($input) `,` type($idx) `to` type(results)
+        $input `,` $idx attr-dict `:` type($res)
     }];
 }
 
@@ -66,10 +67,30 @@ def Standalone_RunOp : Standalone_Op<"run", [Pure]> {
     }];
 
     let arguments = (ins I32:$lb, I32:$ub, AnyNumber:$val); 
-    let results = (outs Looplets:$res);
+    let results = (outs Standalone_LoopletType:$res);
 
     let assemblyFormat = [{
-        $lb $ub $val attr-dict `:` type($lb) `,` type($ub) `,` type($val) `to` type(results)
+        $lb `,` $ub `,` $val attr-dict `:` `(` type($lb) `,` type($ub) `,` type($val) `)` `->` `(` type($res) `)`
     }];
 }
+
+
+def Standalone_SequenceOp : Standalone_Op<"sequence", [Pure]> {
+    let summary = "Finch Sequence Looplets";
+    let description = [{
+        ```mlir
+        %3 = standalone.sequence %lb %ub %looplet1 %looplet2 : (i32, i32, !standalone.looplet, !standalone.looplet) -> !standalone.looplet
+        ```
+    }];
+
+    let arguments = (ins I32:$lb, 
+                         I32:$ub, 
+                         Variadic<Standalone_LoopletType>:$val); 
+    let results = (outs Standalone_LoopletType:$res);
+
+    let assemblyFormat = [{
+        $lb `,` $ub `,` $val attr-dict `:` `(` type($lb) `,` type($ub) `,` type($val) `)` `->` `(` type($res) `)`
+    }];
+}
+
 #endif // STANDALONE_OPS

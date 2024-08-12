@@ -14,6 +14,7 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "Standalone/StandaloneTypes.h"
 
 #define GET_OP_CLASSES
 #include "Standalone/StandaloneOps.h.inc"

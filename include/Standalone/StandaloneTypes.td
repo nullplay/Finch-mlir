@@ -17,8 +17,9 @@ include "Standalone/StandaloneDialect.td"
 // Standalone type definitions
 //===----------------------------------------------------------------------===//
 
-class Standalone_Type<string name, string typeMnemonic, list<Trait> traits = []>
-    : TypeDef<Standalone_Dialect, name, traits> {
+class Standalone_Type<string name, string typeMnemonic, list<Trait> traits = [],
+                      string baseCppClass="::mlir::Type">
+    : TypeDef<Standalone_Dialect, name, traits, baseCppClass> {
   let mnemonic = typeMnemonic;
 }
 
@@ -30,15 +31,16 @@ def Standalone_CustomType : Standalone_Type<"Custom", "custom"> {
 }
 
 
-def AnyNumber : TypeConstraint<Or<[AnyInteger.predicate, AnyFloat.predicate]>, "anynumber">;
 
-def Standalone_LoopletType : Standalone_Type<"Looplets", "looplet"> {
+def Standalone_LoopletType : TypeDef<Standalone_Dialect, "Looplet", []> {
     let summary = "Standalone Looplets type";
     let description = "Looplets type in standalone dialect";
+    let mnemonic = "looplet";
     //let parameters = (ins "int":$lb, "int":$ub);
     //let assemblyFormat = "`<` $lb `,` $ub `>`";
 }
 
-def Looplets : AnyTypeOf<[Standalone_LoopletType]>;
+def AnyNumber : AnyTypeOf<[AnyInteger, AnyFloat]>;
+def Looplet : AnyTypeOf<[Standalone_LoopletType]>;
 
 #endif // STANDALONE_TYPES
