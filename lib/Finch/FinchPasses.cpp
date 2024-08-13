@@ -145,46 +145,82 @@ public:
             bodyOp.emitWarning() << "No Sequence Looplet";
             continue;
           }
+          
+          Operation* prevForOp = op;
+          unsigned numBodyLooplets = seqLooplet->getNumOperands() - 2;
+          for (int i = 0; i < numBodyLooplets; i++) {
+            auto bodyLooplet = seqLooplet->getOperand(2+i);
+ 
+            SmallVector<Value, 4> operands;
+            llvm::append_range(operands, op.getLowerBoundOperands());
+            llvm::append_range(operands, op.getUpperBoundOperands());
+            if (i==0) {
+              llvm::append_range(operands, op.getInits());
+            } else {
+              llvm::append_range(operands, prevForOp->getResults());
+            }
 
-          // if Sequence has only one looplet 
-          if (seqLooplet->getNumOperands()==3) {
-            rewriter.replaceOp(seqLooplet, seqLooplet->getOperand(2));
-            llvm::outs() << *(op->getBlock()) << "\n";
-            return success();
+            IRMapping mapper;
+            Operation* newForOp = rewriter.clone(*op, mapper);
+            rewriter.moveOpAfter(newForOp, prevForOp);
+            rewriter.replaceAllUsesWith(prevForOp->getResults(), newForOp->getResults());
+            newForOp->setOperands(operands);
+            prevForOp = newForOp;
+
+            auto newAccess = mapper.lookupOrNull(&bodyOp);
+            newAccess->setOperand(0, bodyLooplet);
+
           }
+         
+          //llvm::outs() << "---------Main---------\n";
+          //llvm::outs() << *(op->getBlock()) << "\n";
+          //llvm::outs() << "----------End---------\n";
+
+          
+          rewriter.eraseOp(op);
+
+          return success();
+
+          
+          // if Sequence has only one looplet 
+          //if (seqLooplet->getNumOperands()==3) {
+          //  rewriter.replaceOp(seqLooplet, seqLooplet->getOperand(2));
+          //llvm::outs() << *(op->getBlock()) << "\n";
+          //  return success();
+          //}
 
  
-          // Clone the new For loop 
-          SmallVector<Value, 4> operands;
-          llvm::append_range(operands, op.getLowerBoundOperands());
-          llvm::append_range(operands, op.getUpperBoundOperands());
-          llvm::append_range(operands, op.getResults());
+          //// Clone the new For loop 
+          //SmallVector<Value, 4> operands;
+          //llvm::append_range(operands, op.getLowerBoundOperands());
+          //llvm::append_range(operands, op.getUpperBoundOperands());
+          //llvm::append_range(operands, op.getResults());
 
-          IRMapping mapper;
-          Operation* newForOp = rewriter.clone(*op, mapper);
-          //auto newAccess = mapper.lookupOrNull(bodyOp);
-          //assert(newAccess && "Cannot find Access in cloned For");
-          //assert(newAccess.getOperand(1) == indVar &&
-          //    "New Access does not have an induction variable"); 
-          //auto newSeqOp = newSeq.getOperand(0).getDefiningOp();
-          //assert(isa<finch::SequenceOp>(newSeqOp) &&
-          //    "Defining operation is not Sequence");
+          //IRMapping mapper;
+          //Operation* newForOp = rewriter.clone(*op, mapper);
+          ////auto newAccess = mapper.lookupOrNull(bodyOp);
+          ////assert(newAccess && "Cannot find Access in cloned For");
+          ////assert(newAccess.getOperand(1) == indVar &&
+          ////    "New Access does not have an induction variable"); 
+          ////auto newSeqOp = newSeq.getOperand(0).getDefiningOp();
+          ////assert(isa<finch::SequenceOp>(newSeqOp) &&
+          ////    "Defining operation is not Sequence");
 
-          rewriter.moveOpAfter(newForOp, op);
-          rewriter.replaceAllUsesWith(op.getResults(), newForOp->getResults());
-          newForOp->setOperands(operands);
-          
-          bodyOp.setOperand(0, seqLooplet->getOperand(2));
+          //rewriter.moveOpAfter(newForOp, op);
+          //rewriter.replaceAllUsesWith(op.getResults(), newForOp->getResults());
+          //newForOp->setOperands(operands);
+          //
+          //bodyOp.setOperand(0, seqLooplet->getOperand(2));
 
           // Replace Access to Seq Value in original for loop
           //Value seqLb = seqLooplet->getOperand(0);
           //Value seqUb = seqLooplet->getOperand(1);
           //rewriter.replaceOp(seqLooplet, seqLooplet->getOperand(2));
-          seqLooplet->eraseOperand(2);
+          //seqLooplet->eraseOperand(2);
 
 
 
-          llvm::outs() << *(op->getBlock()) << "\n";
+          //llvm::outs() << *(op->getBlock()) << "\n";
 
           // Setup New Map for Min/Max
           //SmallVector<AffineExpr, 4> Exprs;
@@ -221,7 +257,7 @@ public:
           //op.setLowerBound(ValueRange(newLb), origLowerMap);
           //op.setUpperBound(ValueRange(newUb), origUpperMap);
  
-
+          
 
           return success();
         }
