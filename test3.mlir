@@ -17,12 +17,10 @@ module {
       %r2 = finch.run %int_2, %int_2, %fp_1 : (i32, i32, f32) -> (!finch.looplet)
       %s1 = finch.sequence %int_1, %int_2, %r1, %r2 : (i32, i32, !finch.looplet, !finch.looplet) -> (!finch.looplet)
 
-
-      %r3 = finch.run %int_3, %int_4, %fp_2 : (i32, i32, f32) -> (!finch.looplet)
-      %r4 = finch.run %int_5, %int_6, %fp_2 : (i32, i32, f32) -> (!finch.looplet)
-      %s2 = finch.sequence %int_3, %int_6, %r3, %r4 : (i32, i32, !finch.looplet, !finch.looplet) -> (!finch.looplet)
-
-
+      %r3 = finch.run %int_1, %int_1, %fp_1 : (i32, i32, f32) -> (!finch.looplet)
+      %r4 = finch.run %int_2, %int_2, %fp_1 : (i32, i32, f32) -> (!finch.looplet)
+      %r5 = finch.run %int_3, %int_4, %fp_2 : (i32, i32, f32) -> (!finch.looplet)
+      %s2 = finch.sequence %int_1, %int_4, %r3, %r4, %r5 : (i32, i32, !finch.looplet, !finch.looplet, !finch.looplet) -> (!finch.looplet)
 
       %sum = affine.for %i = %b0 to %b1 iter_args(%sum_iter = %sum_0) -> f32 {
         %1 = finch.access %s1, %i : f32
