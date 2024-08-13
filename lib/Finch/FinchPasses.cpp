@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -125,21 +126,73 @@ public:
             bodyOp.emitWarning() << "No Sequence Looplet";
             continue;
           }
-         
-          // Replace Access to Run Value
-          Value seqValue = seqLooplet.getOperand(2); 
-          rewriter.replaceOp(seqLooplet, seqValue);
-          
+
+          // if Sequence has only one looplet 
+          if (seqLooplet.getNumOperands()==3) {
+            rewriter.replaceOp(seqLooplet, seqLooplet.getOperand(2));
+            return success();
+          }
+ 
+          // Clone the new For loop 
           SmallVector<Value, 4> operands;
           llvm::append_range(operands, op.getLowerBoundOperands());
           llvm::append_range(operands, op.getUpperBoundOperands());
           llvm::append_range(operands, op.getResults());
 
-          Operation* clonedForOp = rewriter.clone(*op);
-            
-          rewriter.moveOpAfter(clonedForOp, op);
-          rewriter.replaceAllUsesWith(op.getResults(), clonedForOp->getResults());
-          clonedForOp->setOperands(operands);         
+          IRMapping mapper;
+          Operation* newForOp = rewriter.clone(*op, mapper);
+          auto newSeq = mapper.lookupOrNull(seqLooplet);
+          assert(newSeq && "Cannot Find Sequence in Cloned For");
+          auto newSeqOp = newSeq.getDefiningOp();
+          assert(isa<finch::SequenceOp>(newSeqOp) &&
+              "Defining Operation is not Sequence");
+          newSeqOp->eraseOperand(2);
+
+          rewriter.moveOpAfter(newForOp, op);
+          rewriter.replaceAllUsesWith(op.getResults(), newForOp->getResults());
+          newForOp->setOperands(operands);
+
+          // Replace Access to Seq Value in original for loop
+          Value seqLb = seqLooplet.getOperand(0);
+          Value seqUb = seqLooplet.getOperand(1);
+          rewriter.replaceOp(seqLooplet, seqLooplet.getOperand(2));
+
+          // Setup New Map for Min/Max
+          SmallVector<AffineExpr, 4> Exprs;
+          Exprs.push_back(builder.getAffineSymbolExpr(0));
+          Exprs.push_back(builder.getAffineSymbolExpr(1));
+          AffineMap newmap = AffineMap::get(
+              0, /* NumDims */ 
+              2, /* NumSymbols */ 
+              Exprs, builder.getContext());
+
+          // Setup New Operands for Min/Max
+          SmallVector<Value, 4> lowerBoundOperands;
+          SmallVector<Value, 4> upperBoundOperands;
+          Value forLb = op.getLowerBoundOperands()[0];
+          Value forUb = op.getUpperBoundOperands()[0];
+          Value seqLbToIndex = rewriter.create<arith::IndexCastOp>(
+              loc, rewriter.getIndexType(), seqLb); /* number->index */
+          Value seqUbToIndex = rewriter.create<arith::IndexCastOp>(
+              loc, rewriter.getIndexType(), seqUb); /* number->index */
+          lowerBoundOperands.push_back(forLb);
+          lowerBoundOperands.push_back(seqLbToIndex);
+          upperBoundOperands.push_back(forUb);
+          upperBoundOperands.push_back(seqUbToIndex);
+         
+          //Intersect Loop and Run Bound 
+          Value newLb = rewriter.create<affine::AffineMaxOp>(
+              loc, newmap, lowerBoundOperands);
+          Value newUb = rewriter.create<affine::AffineMinOp>(
+              loc, newmap, upperBoundOperands);
+
+          // Update AffineFor Bounds
+          AffineMap origLowerMap = op.getLowerBound().getMap();
+          AffineMap origUpperMap = op.getUpperBound().getMap();
+          op.setLowerBound(ValueRange(newLb), origLowerMap);
+          op.setUpperBound(ValueRange(newUb), origUpperMap);
+ 
+
 
           return success();
         }
