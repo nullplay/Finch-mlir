@@ -30,7 +30,8 @@ int main(int argc, char **argv) {
   registry.insert<mlir::finch::FinchDialect,
                   mlir::index::IndexDialect, mlir::affine::AffineDialect,
                   mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::pdl::PDLDialect, mlir::pdl_interp::PDLInterpDialect>();
+                  mlir::pdl::PDLDialect, mlir::pdl_interp::PDLInterpDialect,
+                  mlir::memref::MemRefDialect>();
   // Add the following to include *all* MLIR Core dialects, or selectively
   // include what you need like above. You only need to register dialects that
   // will be *parsed* by the tool, not the one generated

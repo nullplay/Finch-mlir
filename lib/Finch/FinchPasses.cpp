@@ -56,15 +56,22 @@ public:
             bodyOp.emitWarning() << "No Run Looplet";
             continue;
           }
-         
+ 
+          llvm::outs() << "---------Start---------\n";
+          llvm::outs() << op << "\n";
+          llvm::outs() << "----------------------\n";
+
+        
+          rewriter.setInsertionPoint(op);
+
           // Setup New Map for Min/Max
           SmallVector<AffineExpr, 4> Exprs;
-          Exprs.push_back(builder.getAffineSymbolExpr(0));
-          Exprs.push_back(builder.getAffineSymbolExpr(1));
+          Exprs.push_back(rewriter.getAffineSymbolExpr(0));
+          Exprs.push_back(rewriter.getAffineSymbolExpr(1));
           AffineMap newmap = AffineMap::get(
               0, /* NumDims */ 
               2, /* NumSymbols */ 
-              Exprs, builder.getContext());
+              Exprs, rewriter.getContext());
 
           // Setup New Operands for Min/Max
           SmallVector<Value, 4> lowerBoundOperands;
@@ -91,12 +98,29 @@ public:
           // Update AffineFor Bounds
           AffineMap origLowerMap = op.getLowerBound().getMap();
           AffineMap origUpperMap = op.getUpperBound().getMap();
-          op.setLowerBound(ValueRange(newLb), origLowerMap);
-          op.setUpperBound(ValueRange(newUb), origUpperMap);
-          
+          op.setLowerBound({newLb}, origLowerMap);
+          op.setUpperBound({newUb}, origUpperMap);
+
+          //Value newLb = rewriter.create<arith::MulIOp>(
+          //    loc, runLb, indVar);
+          //Value newUb = rewriter.create<arith::MulIOp>(
+          //    loc, runUb, indVar);
+
+
+          //op.setLowerBound({newLb}, origLowerMap);
+          //op.setUpperBound({newUb}, origUpperMap);
+
+
+
           // Replace Access to Run Value
           Value runValue = runLooplet.getOperand(2); 
           rewriter.replaceOp(&bodyOp, runValue);
+
+          llvm::outs() << "---------Main---------\n";
+          llvm::outs() << *(op->getBlock()) << "\n";
+          llvm::outs() << op << "\n";
+          llvm::outs() << "----------End---------\n";
+
 
           return success();
         }

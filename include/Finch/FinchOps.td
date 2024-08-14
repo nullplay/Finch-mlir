@@ -51,12 +51,29 @@ def Finch_AccessOp : Finch_Op<"access", [Pure]> {
     }];
 
     let arguments = (ins Finch_LoopletType:$input, Index:$idx); 
-    let results = (outs AnyNumber:$res);
+    let results = (outs LoopletOrNumber:$res);
 
     let assemblyFormat = [{
         $input `,` $idx attr-dict `:` type($res)
     }];
 }
+
+def Finch_NextLevelOp : Finch_Op<"nextlevel", [Pure]> {
+    let summary = "Finch NextLevel Looplets";
+    let description = [{
+        ```mlir
+        %3 = finch.nextlevel %val : looplet -> looplet
+        ```
+    }];
+
+    let arguments = (ins Finch_LoopletType:$val); 
+    let results = (outs Finch_LoopletType:$res);
+
+    let assemblyFormat = [{
+        $val attr-dict `:` `(` type($val) `)` `->` `(` type($res) `)`
+    }];
+}
+
 
 def Finch_RunOp : Finch_Op<"run", [Pure]> {
     let summary = "Finch Run Looplets";
@@ -66,7 +83,7 @@ def Finch_RunOp : Finch_Op<"run", [Pure]> {
         ```
     }];
 
-    let arguments = (ins I32:$lb, I32:$ub, AnyNumber:$val); 
+    let arguments = (ins I32:$lb, I32:$ub, LoopletOrNumber:$val); 
     let results = (outs Finch_LoopletType:$res);
 
     let assemblyFormat = [{
