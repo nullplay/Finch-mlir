@@ -25,7 +25,7 @@ module {
       
       %sum = memref.alloc() : memref<f32>
       memref.store %fp_0, %sum[] : memref<f32> 
-
+      
       affine.for %i = %b0 to %b1 {
         affine.for %j = %b0 to %b1 {
           %1 = finch.access %l0, %j : f32

@@ -10,8 +10,7 @@ module {
 
       %sum = affine.for %i = %b0 to %b1 iter_args(%sum_iter = %sum_0) -> f32 {
         %3 = finch.run %int_1, %int_1, %fp_2 : (i32, i32, f32) -> (!finch.looplet)
-        %5 = finch.sequence %int_1, %int_1, %3, %3, %3 : (i32, i32, !finch.looplet, !finch.looplet, !finch.looplet) -> (!finch.looplet)
-        %4 = finch.access %5, %i : f32
+        %4 = finch.access %3, %i : f32
 
         //%t = affine.load %buffer[%i] : memref<4xf32>
         //%sum_next = arith.addf %sum_iter, %t : f32

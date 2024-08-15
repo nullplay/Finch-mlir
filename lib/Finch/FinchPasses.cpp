@@ -90,16 +90,19 @@ public:
           upperBoundOperands.push_back(runUbToIndex);
          
           //Intersect Loop and Run Bound 
-          Value newLb = rewriter.create<affine::AffineMaxOp>(
-              loc, newmap, lowerBoundOperands);
-          Value newUb = rewriter.create<affine::AffineMinOp>(
-              loc, newmap, upperBoundOperands);
+          //Value newLb = rewriter.create<affine::AffineMaxOp>(
+          //    loc, newmap, lowerBoundOperands);
+          //Value newUb = rewriter.create<affine::AffineMinOp>(
+          //    loc, newmap, upperBoundOperands);
 
           // Update AffineFor Bounds
           AffineMap origLowerMap = op.getLowerBound().getMap();
           AffineMap origUpperMap = op.getUpperBound().getMap();
-          op.setLowerBound({newLb}, origLowerMap);
-          op.setUpperBound({newUb}, origUpperMap);
+          //op.setLowerBound({newLb}, origLowerMap);
+          //op.setUpperBound({newUb}, origUpperMap);
+          op.setLowerBound(ValueRange(lowerBoundOperands), newmap);
+          op.setUpperBound(ValueRange(upperBoundOperands), newmap);
+
 
           //Value newLb = rewriter.create<arith::MulIOp>(
           //    loc, runLb, indVar);
