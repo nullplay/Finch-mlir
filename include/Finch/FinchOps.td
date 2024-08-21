@@ -11,8 +11,13 @@
 
 include "Finch/FinchDialect.td"
 include "Finch/FinchTypes.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/DestinationStyleOpInterface.td"
+include "mlir/Interfaces/ParallelCombiningOpInterface.td"
+include "mlir/IR/RegionKindInterface.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 
 def Finch_FooOp : Finch_Op<"foo", [Pure,
                                              SameOperandsAndResultType]> {
@@ -109,5 +114,45 @@ def Finch_SequenceOp : Finch_Op<"sequence", [Pure]> {
         $lb `,` $ub `,` $val attr-dict `:` `(` type($lb) `,` type($ub) `,` type($val) `)` `->` `(` type($res) `)`
     }];
 }
+
+
+def Finch_LookupOp : Finch_Op<"lookup",[NoTerminator]> {
+//def Finch_LookupOp : Finch_Op<"lookup", [ SingleBlockImplicitTerminator<"finch::ReturnOp">]> {
+    let summary = "Finch Lookup Looplets";
+    let description = [{
+        ```mlir
+        %3 = finch.lookup %lb %ub : 
+        ```
+    }];
+
+    let arguments = (ins I32:$lb, 
+                         I32:$ub);
+    let regions = (region AnyRegion:$seek,
+                          AnyRegion:$body,
+                          AnyRegion:$next);
+    let results = (outs Finch_LoopletType:$res);
+
+    let assemblyFormat = [{
+        $lb `,` $ub `,` `seek` $seek `,` `body` $body `,` `next` $next attr-dict `:` `(` type($lb) `,` type($ub) `)` `->` `(` type($res) `)`
+    }];
+}
+
+def Finch_ReturnOp : Finch_Op<"return", [Pure, Terminator, ReturnLike]> {
+    let summary = "Finch Return Looplets";
+    let description = [{
+        ```mlir
+        finch.return %9 : !finch.looplet 
+        ```
+    }];
+
+    let arguments = (ins Finch_LoopletType:$result);
+    let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
+    let assemblyFormat = [{
+       $result attr-dict  `:` type($result)
+    }];
+}
+
+
+
 
 #endif // FINCH_OPS

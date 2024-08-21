@@ -144,8 +144,8 @@ public:
           //  llvm::outs() << x << " ";
           //llvm::outs() << "\n\n";
 
-          op.setLowerBound(ValueRange(lbOperands), newLowerMap);
-          op.setUpperBound(ValueRange(ubOperands), newUpperMap);
+          //op.setLowerBound(ValueRange(lbOperands), newLowerMap);
+          //op.setUpperBound(ValueRange(ubOperands), newUpperMap);
 
           // Replace Access to Run Value
           Value runValue = runLooplet.getOperand(2); 
@@ -254,7 +254,89 @@ public:
   }
 };
 
+class FinchLoopletLookupRewriter : public OpRewritePattern<affine::AffineForOp> {
+public:
+  using OpRewritePattern<affine::AffineForOp>::OpRewritePattern;
 
+  LogicalResult matchAndRewrite(affine::AffineForOp op,
+                                PatternRewriter &rewriter) const final {
+    auto indVar = op.getInductionVar();
+    
+    OpBuilder builder(op);
+    Location loc = op.getLoc();
+
+    llvm::outs() << *(op->getBlock()) << "\n";
+    for (auto& bodyOp : *op.getBody()) {
+      if (isa<mlir::finch::AccessOp>(bodyOp)) {
+        auto accessVar = bodyOp.getOperand(1);
+        if (accessVar == indVar) {
+          auto lookupLooplet = bodyOp.getOperand(0).getDefiningOp<finch::LookupOp>();
+          if (!lookupLooplet) {
+            //bodyOp.emitWarning() << "No Sequence Looplet";
+            continue;
+          }
+          
+          //rewriter.setInsertionPoint(seqLooplet);
+          
+          // Intersect with Sequence Bound and Loop Bound
+          //AffineMap currLowerMap = op.getLowerBound().getMap();
+          //AffineMap currUpperMap = op.getLowerBound().getMap();
+          //auto lbExprs = llvm::to_vector<4>(currLowerMap.getResults());
+          //auto ubExprs = llvm::to_vector<4>(currUpperMap.getResults());
+          //lbExprs.push_back(rewriter.getAffineSymbolExpr(
+          //    currLowerMap.getNumSymbols()));
+          //ubExprs.push_back(rewriter.getAffineSymbolExpr(
+          //    currUpperMap.getNumSymbols()));
+          //AffineMap newLowerMap = AffineMap::get(
+          //    currLowerMap.getNumDims(),  
+          //    currLowerMap.getNumSymbols()+1,  
+          //    lbExprs, rewriter.getContext());
+          //AffineMap newUpperMap = AffineMap::get(
+          //    currUpperMap.getNumDims(),  
+          //    currUpperMap.getNumSymbols()+1,  
+          //    ubExprs, rewriter.getContext());
+
+          //auto lbOperands = llvm::to_vector<4>(op.getLowerBoundOperands());
+          //auto ubOperands = llvm::to_vector<4>(op.getUpperBoundOperands());
+          //Value lkpLb = rewriter.create<arith::IndexCastOp>( /* number->index */
+          //    lookupLooplet.getLoc(), rewriter.getIndexType(), lookupLooplet.getOperand(0)); 
+          //Value lkpUb = rewriter.create<arith::IndexCastOp>( /* number->index */
+          //    lookupLooplet.getLoc(), rewriter.getIndexType(), lookupLooplet.getOperand(1));
+          //lbOperands.push_back(lkpLb);
+          //ubOperands.push_back(lkpUb);
+
+          //op.setLowerBound(ValueRange(lbOperands), newLowerMap);
+          //op.setUpperBound(ValueRange(ubOperands), newUpperMap);
+
+
+          // Main Lookup Rewrite        
+          Block &bodyBlock = lookupLooplet.getRegion(0).front();
+          llvm::outs() << bodyBlock << "\n";
+          Operation* returnOp = bodyBlock.getTerminator();
+          Value lookupBodyLooplet = returnOp->getOperand(0);
+          
+          // inline whole block into for loop 
+          rewriter.inlineBlockBefore(&bodyBlock, &bodyOp, ValueRange(indVar));
+
+          // set AccessOp's operand to lookup body
+          bodyOp.setOperand(0, lookupBodyLooplet); 
+          rewriter.eraseOp(returnOp);
+ 
+          // erase original Lookup Looplet
+          rewriter.eraseOp(lookupLooplet);
+
+          llvm::outs() << op << "\n";
+
+         
+
+          return success();
+        }
+      }
+    }
+    
+    return failure();
+  }
+};
 
 class FinchSwitchBarFoo
     : public impl::FinchSwitchBarFooBase<FinchSwitchBarFoo> {
@@ -293,6 +375,7 @@ public:
   void runOnOperation() final {
     RewritePatternSet patterns(&getContext());
     patterns.add<FinchLoopletSequenceRewriter>(&getContext()); // To Sequence
+    patterns.add<FinchLoopletLookupRewriter>(&getContext()); // To Sequence 
     //patterns.add<FinchLoopletRunRewriter>(&getContext());
     //patterns.add<FinchAffineStoreLoadRewriter>(&getContext());
     FrozenRewritePatternSet patternSet(std::move(patterns));
@@ -300,7 +383,6 @@ public:
       signalPassFailure();
   }
 };
-
 
 
 

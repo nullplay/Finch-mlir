@@ -17,10 +17,12 @@ module {
       /////////////////////////////////
 
       // Tensor A
+      // ([0,2], [0,4]) -> 0.0
+      // ([3,4], [0,4]) -> 2.0
 
       // 2nd Dimension
       %a0 = finch.run %int_0, %int_4, %fp_0 : (i32, i32, f32) -> (!finch.looplet)
-      %a1 = finch.run %int_0, %int_4, %fp_2 : (i32, i32, f32) -> (!finch.looplet)
+      %a1 = finch.run %int_0, %int_4, %fp_0 : (i32, i32, f32) -> (!finch.looplet)
 
       // barrier between dimensions
       //%l2 = finch.nextlevel %l0 : (!finch.looplet) -> (!finch.looplet)  
@@ -30,13 +32,16 @@ module {
       %a4 = finch.run %int_0, %int_2, %a0 : (i32, i32, !finch.looplet) -> (!finch.looplet)
       %a5 = finch.run %int_3, %int_4, %a1 : (i32, i32, !finch.looplet) -> (!finch.looplet)
       %a7 = finch.sequence %int_0, %int_4, %a4, %a5 : (i32, i32, !finch.looplet, !finch.looplet) -> (!finch.looplet)
-     
+      
 
       // Tensor B
-
+      // ([0,1], [0,2]) -> 0.0
+      // ([0,1], [3,4]) -> 1.0
+      // ([2,4], [0,4]) -> 1.0
+      
       // 2nd Dimension
       %b0 = finch.run %int_0, %int_2, %fp_0 : (i32, i32, f32) -> (!finch.looplet)
-      %b1 = finch.run %int_3, %int_4, %fp_0 : (i32, i32, f32) -> (!finch.looplet)
+      %b1 = finch.run %int_3, %int_4, %fp_1 : (i32, i32, f32) -> (!finch.looplet)
       %b2 = finch.sequence %int_0, %int_4, %b0, %b1 : (i32, i32, !finch.looplet, !finch.looplet) -> (!finch.looplet)
 
       %b3 = finch.run %int_0, %int_4, %fp_1 : (i32, i32, f32) -> (!finch.looplet)

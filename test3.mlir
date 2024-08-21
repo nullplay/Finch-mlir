@@ -18,6 +18,9 @@ module {
       %r2 = finch.run %int_6, %int_6, %fp_1 : (i32, i32, f32) -> (!finch.looplet)
       %s1 = finch.sequence %int_0, %int_6, %r1, %r2 : (i32, i32, !finch.looplet, !finch.looplet) -> (!finch.looplet)
 
+      %newsequence = finch.sequence %r1, %int_5, %r2
+
+
       %r3 = finch.run %int_1, %int_1, %fp_1 : (i32, i32, f32) -> (!finch.looplet)
       %r4 = finch.run %int_2, %int_2, %fp_1 : (i32, i32, f32) -> (!finch.looplet)
       %r5 = finch.run %int_3, %int_4, %fp_2 : (i32, i32, f32) -> (!finch.looplet)
