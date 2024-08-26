@@ -3,13 +3,13 @@
 module {
 
     func.func @binarysearch(%idx : index, 
-      %pos : memref<index>, %ptr : memref<2xi32>, %crd : memref<10xi32>) {
+      %pos : memref<index>, %ptr : memref<2xi32>, %crd : memref<?xi32>) {
       %0 = arith.constant 0 : index
       memref.store %0, %pos[] : memref<index>
       return 
     }
 
-    func.func @test(%buffer : memref<4xf32>, %b0:index, %b1:index)  {
+    func.func @test(%buffer : memref<4xf32>, %b0:index, %b1:index, %N:index)  {
       %fp_0 = arith.constant 0.0 : f32
       %fp_1 = arith.constant 1.1 : f32
       %fp_2 = arith.constant 2.2 : f32
@@ -27,36 +27,35 @@ module {
       // 2nd Dimension
       %pos = memref.alloc() : memref<index>
       %ptr = memref.alloc() : memref<2xi32>
-      %crd = memref.alloc() : memref<10xi32>
+      %crd = memref.alloc(%N) : memref<?xi32>
 
-      %l0 = finch.lookup %0, %4, 
+      %l0 = finch.lookup  
           seek {
             ^bb(%idx : index):
               func.call @binarysearch(%idx, %pos, %ptr, %crd) : 
-                (index, memref<index>, memref<2xi32>, memref<10xi32>) -> () 
+                (index, memref<index>, memref<2xi32>, memref<?xi32>) -> () 
           },
           body {
-              %currpos = memref.load %pos[] : memref<index>
-              %index_1 = arith.constant 1 : index
-              %prevpos = arith.subi %currpos, %index_1: index
-              
-              %prevcrd = memref.load %crd[%currpos] : memref<10xi32>
-              %currcrd = memref.load %crd[%currpos] : memref<10xi32>
-              %currcrd_before = arith.subi %currcrd, %1 : i32
+            %currpos = memref.load %pos[] : memref<index>
+            %index_1 = arith.constant 1 : index
+            %prevpos = arith.subi %currpos, %index_1: index
+            
+            %prevcrd = memref.load %crd[%currpos] : memref<?xi32>
+            %currcrd = memref.load %crd[%currpos] : memref<?xi32>
+            %currcrd_before = arith.subi %currcrd, %1 : i32
 
-              %zero_run = finch.run %prevcrd, %currcrd_before, %fp_0 : (i32, i32, f32) -> (!finch.looplet)
-              %nonzero_run = finch.run %currcrd, %currcrd, %fp_1 : (i32, i32, f32) -> (!finch.looplet)
-              %seq = finch.sequence %prevcrd, %currcrd, %zero_run, %nonzero_run : (i32, i32, !finch.looplet, !finch.looplet) -> (!finch.looplet)
-              finch.return %seq : !finch.looplet
+            %zero_run = finch.run %fp_0 : (f32) -> (!finch.looplet)
+            %nonzero_run = finch.run %fp_1 : (f32) -> (!finch.looplet)
+            %seq = finch.sequence %currcrd, %zero_run, %nonzero_run : (i32, !finch.looplet, !finch.looplet) -> (!finch.looplet)
+            finch.return %seq : !finch.looplet
           }, 
           next {
-            ^bb:
-              %currpos = memref.load %pos[] : memref<index>
-              %currpos_i32 = arith.index_cast %currpos : index to i32
-              %nextpos_i32 = arith.addi %currpos_i32, %1 : i32
-              %nextpos = arith.index_cast %nextpos_i32 : i32 to index
-              memref.store %nextpos, %pos[] : memref<index>
-          }: (i32, i32) -> (!finch.looplet)
+            %currpos = memref.load %pos[] : memref<index>
+            %currpos_i32 = arith.index_cast %currpos : index to i32
+            %nextpos_i32 = arith.addi %currpos_i32, %1 : i32
+            %nextpos = arith.index_cast %nextpos_i32 : i32 to index
+            memref.store %nextpos, %pos[] : memref<index>
+          }
 
 
       /////////////////////////////////

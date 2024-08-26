@@ -84,15 +84,15 @@ def Finch_RunOp : Finch_Op<"run", [Pure]> {
     let summary = "Finch Run Looplets";
     let description = [{
         ```mlir
-        %3 = finch.run %lb %ub %val : i32, i32, f32 -> looplet
+        %3 = finch.run %val : f32 -> looplet
         ```
     }];
 
-    let arguments = (ins I32:$lb, I32:$ub, LoopletOrNumber:$val); 
+    let arguments = (ins LoopletOrNumber:$val); 
     let results = (outs Finch_LoopletType:$res);
 
     let assemblyFormat = [{
-        $lb `,` $ub `,` $val attr-dict `:` `(` type($lb) `,` type($ub) `,` type($val) `)` `->` `(` type($res) `)`
+         $val attr-dict `:` `(` type($val) `)` `->` `(` type($res) `)`
     }];
 }
 
@@ -101,17 +101,17 @@ def Finch_SequenceOp : Finch_Op<"sequence", [Pure]> {
     let summary = "Finch Sequence Looplets";
     let description = [{
         ```mlir
-        %3 = finch.sequence %lb %ub %looplet1 %looplet2 : (i32, i32, !finch.looplet, !finch.looplet) -> !finch.looplet
+        %3 = finch.sequence %lb %looplet1 %looplet2 : (i32, !finch.looplet, !finch.looplet) -> !finch.looplet
         ```
     }];
 
-    let arguments = (ins I32:$lb, 
-                         I32:$ub, 
-                         Variadic<Finch_LoopletType>:$val); 
+    let arguments = (ins I32:$split, 
+                         Finch_LoopletType:$val1,
+                         Finch_LoopletType:$val2); 
     let results = (outs Finch_LoopletType:$res);
 
     let assemblyFormat = [{
-        $lb `,` $ub `,` $val attr-dict `:` `(` type($lb) `,` type($ub) `,` type($val) `)` `->` `(` type($res) `)`
+        $split `,` $val1 `,` $val2 attr-dict `:` `(` type($split) `,` type($val1) `,` type($val2) `)` `->` `(` type($res) `)`
     }];
 }
 
@@ -125,15 +125,14 @@ def Finch_LookupOp : Finch_Op<"lookup",[NoTerminator]> {
         ```
     }];
 
-    let arguments = (ins I32:$lb, 
-                         I32:$ub);
+    //let arguments = () ;
     let regions = (region AnyRegion:$seek,
                           AnyRegion:$body,
                           AnyRegion:$next);
     let results = (outs Finch_LoopletType:$res);
 
     let assemblyFormat = [{
-        $lb `,` $ub `,` `seek` $seek `,` `body` $body `,` `next` $next attr-dict `:` `(` type($lb) `,` type($ub) `)` `->` `(` type($res) `)`
+        `seek` $seek `,` `body` $body `,` `next` $next attr-dict 
     }];
 }
 
