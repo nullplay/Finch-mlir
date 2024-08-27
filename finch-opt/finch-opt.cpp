@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
@@ -15,11 +15,6 @@
 #include "Finch/FinchDialect.h"
 #include "Finch/FinchPasses.h"
 
-namespace mlir{
-namespace test{
-  void registerTestPDLByteCodePass();
-} // namespace test
-} // namespace mlir
 
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
@@ -37,8 +32,7 @@ int main(int argc, char **argv) {
   //registerAllDialects(registry);
 
   //mlir::registerAllPasses();
-  
-  mlir::test::registerTestPDLByteCodePass();
+  mlir::func::registerAllExtensions(registry); 
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "Finch optimizer driver\n", registry));
 }

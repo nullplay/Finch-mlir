@@ -14,6 +14,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 
 #include "Finch/FinchPasses.h"
 #include "llvm/Support/Debug.h"
@@ -23,6 +24,8 @@ namespace mlir::finch {
 #define GEN_PASS_DEF_FINCHSWITCHBARFOO
 #define GEN_PASS_DEF_FINCHLOOPLETRUN
 #define GEN_PASS_DEF_FINCHLOOPLETSEQUENCE
+#define GEN_PASS_DEF_FINCHLOOPLETSTEPPER
+#define GEN_PASS_DEF_FINCHLOOPLETPASS
 #include "Finch/FinchPasses.h.inc"
 
 namespace {
@@ -39,25 +42,22 @@ public:
   }
 };
 
-class FinchAffineStoreLoadRewriter : public OpRewritePattern<affine::AffineStoreOp> {
+class FinchMemrefStoreLoadRewriter : public OpRewritePattern<memref::StoreOp> {
 public:
-  using OpRewritePattern<affine::AffineStoreOp>::OpRewritePattern;
+  using OpRewritePattern<memref::StoreOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(affine::AffineStoreOp op,
+  LogicalResult matchAndRewrite(memref::StoreOp op,
                                 PatternRewriter &rewriter) const final {
     auto storeValue = op.getOperand(0);
     auto storeMemref = op.getOperand(1);
-    auto storeAffineMap = op.getAffineMapAttr();
     
-    auto loadOp = storeValue.getDefiningOp<affine::AffineLoadOp>();
+    auto loadOp = storeValue.getDefiningOp<memref::LoadOp>();
     if (!loadOp) {
       return failure();
     }
     auto loadMemref = loadOp.getOperand(0);
-    auto loadAffineMap = loadOp.getAffineMapAttr();
 
     bool isMemrefSame = storeMemref == loadMemref; 
-    bool isAffineMapSame = storeAffineMap == loadAffineMap; 
     bool isIndexSame = true;
 
     // variadic index
@@ -76,7 +76,7 @@ public:
       }
     }
 
-    if (isMemrefSame && isIndexSame && isAffineMapSame) {
+    if (isMemrefSame && isIndexSame) {
       rewriter.eraseOp(op);
       return success();
     }
@@ -89,14 +89,14 @@ public:
 class FinchLoopletRunRewriter : public OpRewritePattern<scf::ForOp> {
 public:
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(scf::ForOp op,
+  LogicalResult matchAndRewrite(scf::ForOp forOp,
                                 PatternRewriter &rewriter) const final {
-    auto indVar = op.getInductionVar();
+    auto indVar = forOp.getInductionVar();
     
-    OpBuilder builder(op);
-    Location loc = op.getLoc();
+    OpBuilder builder(forOp);
+    Location loc = forOp.getLoc();
 
-    for (auto& accessOp : *op.getBody()) {
+    for (auto& accessOp : *forOp.getBody()) {
       if (isa<mlir::finch::AccessOp>(accessOp)) {
         auto accessVar = accessOp.getOperand(1);
         if (accessVar == indVar) {
@@ -122,14 +122,14 @@ class FinchLoopletSequenceRewriter : public OpRewritePattern<scf::ForOp> {
 public:
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(scf::ForOp op,
+  LogicalResult matchAndRewrite(scf::ForOp forOp,
                                 PatternRewriter &rewriter) const final {
-    auto indVar = op.getInductionVar();
+    auto indVar = forOp.getInductionVar();
     
-    OpBuilder builder(op);
-    Location loc = op.getLoc();
+    OpBuilder builder(forOp);
+    Location loc = forOp.getLoc();
 
-    for (auto& accessOp : *op.getBody()) {
+    for (auto& accessOp : *forOp.getBody()) {
       if (isa<mlir::finch::AccessOp>(accessOp)) {
         auto accessVar = accessOp.getOperand(1);
         if (accessVar == indVar) {
@@ -141,8 +141,8 @@ public:
           
           rewriter.setInsertionPoint(seqLooplet);
           // Intersect with Sequence Bound and Loop Bound
-          //AffineMap currLowerMap = op.getLowerBound().getMap();
-          //AffineMap currUpperMap = op.getLowerBound().getMap();
+          //AffineMap currLowerMap = forOp.getLowerBound().getMap();
+          //AffineMap currUpperMap = forOp.getLowerBound().getMap();
           //auto lbExprs = llvm::to_vector<4>(currLowerMap.getResults());
           //auto ubExprs = llvm::to_vector<4>(currUpperMap.getResults());
           //lbExprs.push_back(rewriter.getAffineSymbolExpr(
@@ -158,8 +158,8 @@ public:
           //    currUpperMap.getNumSymbols()+1,  
           //    ubExprs, rewriter.getContext());
 
-          //auto lbOperands = llvm::to_vector<4>(op.getLowerBoundOperands());
-          //auto ubOperands = llvm::to_vector<4>(op.getUpperBoundOperands());
+          //auto lbOperands = llvm::to_vector<4>(forOp.getLowerBoundOperands());
+          //auto ubOperands = llvm::to_vector<4>(forOp.getUpperBoundOperands());
           //Value seqLb = rewriter.create<arith::IndexCastOp>( /* number->index */
           //    seqLooplet.getLoc(), rewriter.getIndexType(), seqLooplet.getOperand(0)); 
           //Value seqUb = rewriter.create<arith::IndexCastOp>( /* number->index */
@@ -167,16 +167,16 @@ public:
           //lbOperands.push_back(seqLb);
           //ubOperands.push_back(seqUb);
 
-          //op.setLowerBound(ValueRange(lbOperands), newLowerMap);
-          //op.setUpperBound(ValueRange(ubOperands), newUpperMap);
+          //forOp.setLowerBound(ValueRange(lbOperands), newLowerMap);
+          //forOp.setUpperBound(ValueRange(ubOperands), newUpperMap);
 
 
           // Main Sequence Rewrite          
           IRMapping mapper1;
           IRMapping mapper2;
-          Operation* newForOp1 = rewriter.clone(*op, mapper1);
-          Operation* newForOp2 = rewriter.clone(*op, mapper2);
-          rewriter.moveOpAfter(newForOp1, op);
+          Operation* newForOp1 = rewriter.clone(*forOp, mapper1);
+          Operation* newForOp2 = rewriter.clone(*forOp, mapper2);
+          rewriter.moveOpAfter(newForOp1, forOp);
           rewriter.moveOpAfter(newForOp2, newForOp1);
 
           // Replace Access operand with Sequence bodies
@@ -190,8 +190,8 @@ public:
           newAccess2->setOperand(0, newBodyLooplet2);
           
           // Intersection
-          Value loopLb = op.getLowerBound();
-          Value loopUb = op.getUpperBound();
+          Value loopLb = forOp.getLowerBound();
+          Value loopUb = forOp.getUpperBound();
           Value firstBodyUb = seqLooplet.getOperand(0);
           Value c1 = rewriter.create<arith::ConstantIntOp>(
               loc, 1, firstBodyUb.getType().getIntOrFloatBitWidth());
@@ -213,8 +213,10 @@ public:
           cast<scf::ForOp>(newForOp1).setUpperBound(newFirstLoopUb);
           cast<scf::ForOp>(newForOp2).setLowerBound(newSecondLoopLb);
 
-          rewriter.eraseOp(op);
-
+          rewriter.eraseOp(forOp);
+          
+          //llvm::outs() << *(forOp->getBlock()) << "\n";
+          //llvm::outs() << "Done\n";
           return success();
         }
       }
@@ -224,43 +226,46 @@ public:
   }
 };
 
-class FinchLoopletLookupRewriter : public OpRewritePattern<scf::ForOp> {
+class FinchLoopletStepperRewriter : public OpRewritePattern<scf::ForOp> {
 public:
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(scf::ForOp op,
+  LogicalResult matchAndRewrite(scf::ForOp forOp,
                                 PatternRewriter &rewriter) const final {
-    auto indVar = op.getInductionVar();
+    auto indVar = forOp.getInductionVar();
     
-    OpBuilder builder(op);
-    Location loc = op.getLoc();
+    OpBuilder builder(forOp);
+    Location loc = forOp.getLoc();
 
     //llvm::outs() << *(op->getBlock()) << "\n";
-    for (auto& accessOp : *op.getBody()) {
+    for (auto& accessOp : *forOp.getBody()) {
       if (isa<mlir::finch::AccessOp>(accessOp)) {
         auto accessVar = accessOp.getOperand(1);
         if (accessVar == indVar) {
-          auto lookupLooplet = accessOp.getOperand(0).getDefiningOp<finch::LookupOp>();
+          auto lookupLooplet = accessOp.getOperand(0).getDefiningOp<finch::StepperOp>();
           if (!lookupLooplet) {
             //accessOp.emitWarning() << "No Sequence Looplet";
             continue;
           }
-          
-          // Main Lookup Rewrite        
-          llvm::outs() <<"START \n";
-          Block &seekBlock = lookupLooplet.getRegion(0).front();
-          Block &stopBlock = lookupLooplet.getRegion(1).front();
-          Block &bodyBlock = lookupLooplet.getRegion(2).front();
-          Block &nextBlock = lookupLooplet.getRegion(3).front();
+          // llvm::outs() << "Start Stepper\n";
+          //llvm::outs() << *(forOp->getBlock()->getParent()->getParentOp()->getBlock()) << "\n";
+         
+          // Main Stepper Rewrite        
+          //llvm::outs() <<"START \n";
+          auto lookupLooplet2 = rewriter.clone(*lookupLooplet);
+          Block &seekBlock = lookupLooplet2->getRegion(0).front();
+          Block &stopBlock = lookupLooplet2->getRegion(1).front();
+          Block &bodyBlock = lookupLooplet2->getRegion(2).front();
+          Block &nextBlock = lookupLooplet2->getRegion(3).front();
 
-          Value loopLowerBound = op.getLowerBound();
-          Value loopUpperBound = op.getUpperBound();
+          Value loopLowerBound = forOp.getLowerBound();
+          Value loopUpperBound = forOp.getUpperBound();
           
           // Call Seek 
           Operation* seekReturn = seekBlock.getTerminator();
           Value seekPosition = seekReturn->getOperand(0);
-          rewriter.inlineBlockBefore(&seekBlock, op, ValueRange(loopLowerBound));
-        
+          rewriter.inlineBlockBefore(&seekBlock, forOp, ValueRange(loopLowerBound));
+       
           // create while Op
           ValueRange iterArgs{seekPosition, loopLowerBound};
           scf::WhileOp whileOp = rewriter.create<scf::WhileOp>(
@@ -282,29 +287,29 @@ public:
                                               iterArgs.getTypes(), {loc,loc});
 
           rewriter.setInsertionPointToEnd(after);
-          rewriter.moveOpBefore(op, after, after->end());
+          rewriter.moveOpBefore(forOp, after, after->end());
 
           // call stop
           Operation* stopReturn = stopBlock.getTerminator();
           Value stopCoord = stopReturn->getOperand(0);
-          rewriter.inlineBlockBefore(&stopBlock, op, after->getArgument(0));
+          rewriter.inlineBlockBefore(&stopBlock, forOp, after->getArgument(0));
           rewriter.eraseOp(stopReturn);
 
           // intersection
-          rewriter.setInsertionPoint(op);
+          rewriter.setInsertionPoint(forOp);
           if (!stopCoord.getType().isIndex()) {
             stopCoord = rewriter.create<arith::IndexCastOp>(
                 loc, rewriter.getIndexType(), stopCoord);
           }
           Value intersectUpperBound = rewriter.create<arith::MinUIOp>(
               loc, loopUpperBound, stopCoord);
-          op.setLowerBound(after->getArgument(1));
-          op.setUpperBound(intersectUpperBound); 
+          forOp.setLowerBound(after->getArgument(1));
+          forOp.setUpperBound(intersectUpperBound); 
 
           // call body looplet of stepper
           Operation* bodyReturn = bodyBlock.getTerminator();
           Value bodyLooplet = bodyReturn->getOperand(0);
-          rewriter.inlineBlockBefore(&bodyBlock, op, after->getArgument(0));
+          rewriter.inlineBlockBefore(&bodyBlock, forOp, after->getArgument(0));
           
           accessOp.setOperand(0, bodyLooplet);
           rewriter.eraseOp(bodyReturn);
@@ -323,7 +328,8 @@ public:
           rewriter.create<scf::YieldOp>(loc, ValueRange{nextCoord, nextPos});
           rewriter.eraseOp(nextReturn); 
 
-          rewriter.eraseOp(lookupLooplet);
+          //if (lookupLooplet.use_empty())
+          //  rewriter.eraseOp(lookupLooplet);
 
           //// inline whole block into for loop 
           //llvm::outs() <<"FirstStep \n";
@@ -335,7 +341,7 @@ public:
           //accessOp.setOperand(0, bodyLooplet); 
           //rewriter.eraseOp(bodyReturn);
  
-          //// erase original Lookup Looplet
+          //// erase original Stepper Looplet
           //llvm::outs() <<"ThirdStep \n";
           //rewriter.eraseOp(lookupLooplet);
 
@@ -343,10 +349,10 @@ public:
           //for (Block &block : op->getBlock()->getParent()->getBlocks())
           //  llvm::outs() << block << "\n";
             //printBlock(block);
-          llvm::outs() << *(op->getBlock()->getParent()->getParentOp()) << "\n";
+          //llvm::outs() << *(forOp->getBlock()->getParent()->getParentOp()->getBlock()) << "\n";
+          //llvm::outs() << "Done Stepper\n";
 
-
-          llvm::outs() << "END \n";
+          //llvm::outs() << "END \n";
 
          
 
@@ -367,7 +373,7 @@ public:
   void runOnOperation() final {
     RewritePatternSet patterns(&getContext());
     //patterns.add<FinchSwitchBarFooRewriter>(&getContext());
-    patterns.add<FinchAffineStoreLoadRewriter>(&getContext());
+    patterns.add<FinchMemrefStoreLoadRewriter>(&getContext());
     FrozenRewritePatternSet patternSet(std::move(patterns));
     if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
       signalPassFailure();
@@ -395,15 +401,46 @@ public:
       FinchLoopletSequence>::FinchLoopletSequenceBase;
   void runOnOperation() final {
     RewritePatternSet patterns(&getContext());
-    patterns.add<FinchLoopletSequenceRewriter>(&getContext()); // To Sequence
-    patterns.add<FinchLoopletLookupRewriter>(&getContext()); // To Sequence 
-    //patterns.add<FinchLoopletRunRewriter>(&getContext());
-    //patterns.add<FinchAffineStoreLoadRewriter>(&getContext());
+    patterns.add<FinchLoopletSequenceRewriter>(&getContext()); 
     FrozenRewritePatternSet patternSet(std::move(patterns));
     if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
       signalPassFailure();
   }
 };
+
+class FinchLoopletStepper
+    : public impl::FinchLoopletStepperBase<FinchLoopletStepper> {
+public:
+  using impl::FinchLoopletStepperBase<
+      FinchLoopletStepper>::FinchLoopletStepperBase;
+  void runOnOperation() final {
+    RewritePatternSet patterns(&getContext());
+    patterns.add<FinchLoopletStepperRewriter>(&getContext()); 
+    FrozenRewritePatternSet patternSet(std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
+      signalPassFailure();
+  }
+};
+
+
+class FinchLoopletPass
+    : public impl::FinchLoopletPassBase<FinchLoopletPass> {
+public:
+  using impl::FinchLoopletPassBase<
+      FinchLoopletPass>::FinchLoopletPassBase;
+  void runOnOperation() final {
+    RewritePatternSet patterns(&getContext());
+    patterns.add<FinchMemrefStoreLoadRewriter>(&getContext());
+    patterns.add<FinchLoopletRunRewriter>(&getContext());
+    patterns.add<FinchLoopletSequenceRewriter>(&getContext()); 
+    patterns.add<FinchLoopletStepperRewriter>(&getContext()); 
+    FrozenRewritePatternSet patternSet(std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
+      signalPassFailure();
+  }
+};
+
+
 
 
 

@@ -116,12 +116,11 @@ def Finch_SequenceOp : Finch_Op<"sequence", [Pure]> {
 }
 
 
-def Finch_LookupOp : Finch_Op<"lookup",[NoTerminator]> {
-//def Finch_LookupOp : Finch_Op<"lookup", [ SingleBlockImplicitTerminator<"finch::ReturnOp">]> {
-    let summary = "Finch Lookup Looplets";
+def Finch_StepperOp : Finch_Op<"stepper",[Pure, NoTerminator]> {
+    let summary = "Finch Stepper Looplets";
     let description = [{
         ```mlir
-        %3 = finch.lookup %lb %ub : 
+        %3 = finch.stepper %lb %ub : 
         ```
     }];
 
