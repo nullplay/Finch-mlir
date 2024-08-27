@@ -42,6 +42,8 @@ add_mlir_python_common_capi_library(FinchPythonCAPI
     FinchPythonSources
     # TODO: Remove this in favor of showing fine grained registration once
     # available.
+    MLIRPythonExtension.ExecutionEngine
+    MLIRPythonSources.ExecutionEngine
     MLIRPythonExtension.RegisterEverything
     MLIRPythonSources.Core
 )
@@ -57,6 +59,9 @@ add_mlir_python_modules(FinchPythonModules
     FinchPythonSources
     # TODO: Remove this in favor of showing fine grained registration once
     # available.
+    MLIRPythonExtension.Core
+    MLIRPythonExtension.ExecutionEngine
+    MLIRPythonSources.ExecutionEngine
     MLIRPythonExtension.RegisterEverything
     MLIRPythonSources
   COMMON_CAPI_LINK_LIBS
