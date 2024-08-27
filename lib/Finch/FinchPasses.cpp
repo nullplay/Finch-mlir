@@ -193,24 +193,23 @@ public:
           Value loopLb = op.getLowerBound();
           Value loopUb = op.getUpperBound();
           Value firstBodyUb = seqLooplet.getOperand(0);
-          Value c1 = 
-              rewriter.create<arith::ConstantIntOp>(loc, 1, 
-                  firstBodyUb.getType().getIntOrFloatBitWidth());
-          Value secondBodyLb = 
-              rewriter.create<arith::AddIOp>(loc, firstBodyUb, c1);
+          Value c1 = rewriter.create<arith::ConstantIntOp>(
+              loc, 1, firstBodyUb.getType().getIntOrFloatBitWidth());
+          Value secondBodyLb = rewriter.create<arith::AddIOp>(
+              loc, firstBodyUb, c1);
           // Main intersect
           Value firstBodyUbIndex = firstBodyUb;
           Value secondBodyLbIndex = secondBodyLb;
           if (!firstBodyUb.getType().isIndex()) {
-            firstBodyUbIndex = 
-              rewriter.create<arith::IndexCastOp>(loc, rewriter.getIndexType(), firstBodyUb);
-            secondBodyLbIndex = 
-              rewriter.create<arith::IndexCastOp>(loc, rewriter.getIndexType(), secondBodyLb);
+            firstBodyUbIndex = rewriter.create<arith::IndexCastOp>(
+                loc, rewriter.getIndexType(), firstBodyUb);
+            secondBodyLbIndex = rewriter.create<arith::IndexCastOp>(
+                loc, rewriter.getIndexType(), secondBodyLb);
           }
-          Value newFirstLoopUb = 
-              rewriter.create<arith::MinUIOp>(loc, loopUb, firstBodyUbIndex);
-          Value newSecondLoopLb = 
-              rewriter.create<arith::MaxUIOp>(loc, loopLb, secondBodyLbIndex);
+          Value newFirstLoopUb = rewriter.create<arith::MinUIOp>(
+              loc, loopUb, firstBodyUbIndex);
+          Value newSecondLoopLb = rewriter.create<arith::MaxUIOp>(
+              loc, loopLb, secondBodyLbIndex);
           cast<scf::ForOp>(newForOp1).setUpperBound(newFirstLoopUb);
           cast<scf::ForOp>(newForOp2).setLowerBound(newSecondLoopLb);
 
@@ -250,26 +249,103 @@ public:
           // Main Lookup Rewrite        
           llvm::outs() <<"START \n";
           Block &seekBlock = lookupLooplet.getRegion(0).front();
-          Block &bodyBlock = lookupLooplet.getRegion(1).front();
-          Block &nextBlock = lookupLooplet.getRegion(2).front();
+          Block &stopBlock = lookupLooplet.getRegion(1).front();
+          Block &bodyBlock = lookupLooplet.getRegion(2).front();
+          Block &nextBlock = lookupLooplet.getRegion(3).front();
+
+          Value loopLowerBound = op.getLowerBound();
+          Value loopUpperBound = op.getUpperBound();
+          
+          // Call Seek 
+          Operation* seekReturn = seekBlock.getTerminator();
+          Value seekPosition = seekReturn->getOperand(0);
+          rewriter.inlineBlockBefore(&seekBlock, op, ValueRange(loopLowerBound));
+        
+          // create while Op
+          ValueRange iterArgs{seekPosition, loopLowerBound};
+          scf::WhileOp whileOp = rewriter.create<scf::WhileOp>(
+              loc, iterArgs.getTypes(), iterArgs);
+          rewriter.eraseOp(seekReturn);
+
+          // fill condition
+          Block *before = rewriter.createBlock(&whileOp.getBefore(), {},
+                                               iterArgs.getTypes(), {loc,loc});
+          rewriter.setInsertionPointToEnd(before);
+          Value cond = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ugt,
+                                                      before->getArgument(1), 
+                                                      loopUpperBound);
+          rewriter.create<scf::ConditionOp>(loc, cond, before->getArguments());
+
+
+          // main body while op 
+          Block *after = rewriter.createBlock(&whileOp.getAfter(), {},
+                                              iterArgs.getTypes(), {loc,loc});
+
+          rewriter.setInsertionPointToEnd(after);
+          rewriter.moveOpBefore(op, after, after->end());
+
+          // call stop
+          Operation* stopReturn = stopBlock.getTerminator();
+          Value stopCoord = stopReturn->getOperand(0);
+          rewriter.inlineBlockBefore(&stopBlock, op, after->getArgument(0));
+          rewriter.eraseOp(stopReturn);
+
+          // intersection
+          rewriter.setInsertionPoint(op);
+          if (!stopCoord.getType().isIndex()) {
+            stopCoord = rewriter.create<arith::IndexCastOp>(
+                loc, rewriter.getIndexType(), stopCoord);
+          }
+          Value intersectUpperBound = rewriter.create<arith::MinUIOp>(
+              loc, loopUpperBound, stopCoord);
+          op.setLowerBound(after->getArgument(1));
+          op.setUpperBound(intersectUpperBound); 
+
+          // call body looplet of stepper
           Operation* bodyReturn = bodyBlock.getTerminator();
-          Value bodyLooplet = bodyReturn->getOperand(0); 
-
-          // inline whole block into for loop 
-          llvm::outs() <<"FirstStep \n";
-          rewriter.inlineBlockBefore(&seekBlock, &accessOp, ValueRange(indVar));
-          rewriter.inlineBlockBefore(&bodyBlock, &accessOp, std::nullopt);
-          rewriter.inlineBlockBefore(&nextBlock, &accessOp, std::nullopt);
-
-          // set AccessOp's operand to lookup body
-          accessOp.setOperand(0, bodyLooplet); 
+          Value bodyLooplet = bodyReturn->getOperand(0);
+          rewriter.inlineBlockBefore(&bodyBlock, op, after->getArgument(0));
+          
+          accessOp.setOperand(0, bodyLooplet);
           rewriter.eraseOp(bodyReturn);
- 
-          // erase original Lookup Looplet
-          llvm::outs() <<"ThirdStep \n";
+        
+          // i = i + 1
+          rewriter.setInsertionPointToEnd(after);
+          Value nextCoord = rewriter.create<arith::AddIOp>(loc, after->getArgument(1), 
+              rewriter.create<arith::ConstantIndexOp>(loc,1));
+
+          // call next
+          Operation* nextReturn = nextBlock.getTerminator();
+          Value nextPos = nextReturn->getOperand(0);
+          rewriter.inlineBlockBefore(&nextBlock, 
+                                     nextCoord.getDefiningOp(), 
+                                     after->getArgument(0));
+          rewriter.create<scf::YieldOp>(loc, ValueRange{nextCoord, nextPos});
+          rewriter.eraseOp(nextReturn); 
+
           rewriter.eraseOp(lookupLooplet);
 
-          llvm::outs() << op << "\n";
+          //// inline whole block into for loop 
+          //llvm::outs() <<"FirstStep \n";
+          //rewriter.inlineBlockBefore(&seekBlock, &accessOp, ValueRange(indVar));
+          //rewriter.inlineBlockBefore(&bodyBlock, &accessOp, std::nullopt);
+          //rewriter.inlineBlockBefore(&nextBlock, &accessOp, std::nullopt);
+
+          //// set AccessOp's operand to lookup body
+          //accessOp.setOperand(0, bodyLooplet); 
+          //rewriter.eraseOp(bodyReturn);
+ 
+          //// erase original Lookup Looplet
+          //llvm::outs() <<"ThirdStep \n";
+          //rewriter.eraseOp(lookupLooplet);
+
+          //rewriter.eraseOp(op);
+          //for (Block &block : op->getBlock()->getParent()->getBlocks())
+          //  llvm::outs() << block << "\n";
+            //printBlock(block);
+          llvm::outs() << *(op->getBlock()->getParent()->getParentOp()) << "\n";
+
+
           llvm::outs() << "END \n";
 
          

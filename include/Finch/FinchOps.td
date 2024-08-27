@@ -127,12 +127,13 @@ def Finch_LookupOp : Finch_Op<"lookup",[NoTerminator]> {
 
     //let arguments = () ;
     let regions = (region AnyRegion:$seek,
+                          AnyRegion:$stop,
                           AnyRegion:$body,
                           AnyRegion:$next);
     let results = (outs Finch_LoopletType:$res);
 
     let assemblyFormat = [{
-        `seek` $seek `,` `body` $body `,` `next` $next attr-dict 
+        `seek` $seek `,` `stop` $stop `,` `body` $body `,` `next` $next attr-dict 
     }];
 }
 
@@ -144,7 +145,7 @@ def Finch_ReturnOp : Finch_Op<"return", [Pure, Terminator, ReturnLike]> {
         ```
     }];
 
-    let arguments = (ins Finch_LoopletType:$result);
+    let arguments = (ins AnyType:$result);
     let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
     let assemblyFormat = [{
        $result attr-dict  `:` type($result)
