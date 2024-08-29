@@ -237,103 +237,150 @@ public:
     OpBuilder builder(forOp);
     Location loc = forOp.getLoc();
 
-    //llvm::outs() << *(op->getBlock()) << "\n";
+    // Collect all the steppers from accesses
+    IRMapping mapper;
+    SmallVector<finch::StepperOp, 4> stepperLooplets;
     for (auto& accessOp : *forOp.getBody()) {
       if (isa<mlir::finch::AccessOp>(accessOp)) {
-        auto accessVar = accessOp.getOperand(1);
+        Value accessVar = accessOp.getOperand(1);
         if (accessVar == indVar) {
-          auto lookupLooplet = accessOp.getOperand(0).getDefiningOp<finch::StepperOp>();
-          if (!lookupLooplet) {
-            //accessOp.emitWarning() << "No Sequence Looplet";
-            continue;
+          Operation* looplet = accessOp.getOperand(0).getDefiningOp();
+          if (isa<finch::StepperOp>(looplet)) {
+            stepperLooplets.push_back(cast<finch::StepperOp>(looplet));
+            mapper.map(looplet, &accessOp);
           }
-          // llvm::outs() << "Start Stepper\n";
-          //llvm::outs() << *(forOp->getBlock()->getParent()->getParentOp()->getBlock()) << "\n";
-         
-          // Main Stepper Rewrite        
-          //llvm::outs() <<"START \n";
-          auto lookupLooplet2 = rewriter.clone(*lookupLooplet);
-          Block &seekBlock = lookupLooplet2->getRegion(0).front();
-          Block &stopBlock = lookupLooplet2->getRegion(1).front();
-          Block &bodyBlock = lookupLooplet2->getRegion(2).front();
-          Block &nextBlock = lookupLooplet2->getRegion(3).front();
-
-          Value loopLowerBound = forOp.getLowerBound();
-          Value loopUpperBound = forOp.getUpperBound();
-          
-          // Call Seek 
-          Operation* seekReturn = seekBlock.getTerminator();
-          Value seekPosition = seekReturn->getOperand(0);
-          rewriter.inlineBlockBefore(&seekBlock, forOp, ValueRange(loopLowerBound));
-       
-          // create while Op
-          ValueRange iterArgs{seekPosition, loopLowerBound};
-          scf::WhileOp whileOp = rewriter.create<scf::WhileOp>(
-              loc, iterArgs.getTypes(), iterArgs);
-          rewriter.eraseOp(seekReturn);
-
-          // fill condition
-          Block *before = rewriter.createBlock(&whileOp.getBefore(), {},
-                                               iterArgs.getTypes(), {loc,loc});
-          rewriter.setInsertionPointToEnd(before);
-          Value cond = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ugt,
-                                                      before->getArgument(1), 
-                                                      loopUpperBound);
-          rewriter.create<scf::ConditionOp>(loc, cond, before->getArguments());
-
-
-          // after region of while op 
-          Block *after = rewriter.createBlock(&whileOp.getAfter(), {},
-                                              iterArgs.getTypes(), {loc,loc});
-
-          rewriter.setInsertionPointToEnd(after);
-          rewriter.moveOpBefore(forOp, after, after->end());
-
-          // call stop
-          Operation* stopReturn = stopBlock.getTerminator();
-          Value stopCoord = stopReturn->getOperand(0);
-          rewriter.inlineBlockBefore(&stopBlock, forOp, after->getArgument(0));
-          rewriter.eraseOp(stopReturn);
-
-          // intersection
-          rewriter.setInsertionPoint(forOp);
-          if (!stopCoord.getType().isIndex()) {
-            stopCoord = rewriter.create<arith::IndexCastOp>(
-                loc, rewriter.getIndexType(), stopCoord);
-          }
-          Value intersectUpperBound = rewriter.create<arith::MinUIOp>(
-              loc, loopUpperBound, stopCoord);
-          forOp.setLowerBound(after->getArgument(1));
-          forOp.setUpperBound(intersectUpperBound); 
-
-          // call body looplet of stepper
-          Operation* bodyReturn = bodyBlock.getTerminator();
-          Value bodyLooplet = bodyReturn->getOperand(0);
-          rewriter.inlineBlockBefore(&bodyBlock, forOp, after->getArgument(0));
-          
-          accessOp.setOperand(0, bodyLooplet);
-          rewriter.eraseOp(bodyReturn);
-        
-          // i = i + 1
-          rewriter.setInsertionPointToEnd(after);
-          Value nextCoord = rewriter.create<arith::AddIOp>(loc, after->getArgument(1), 
-              rewriter.create<arith::ConstantIndexOp>(loc,1));
-
-          // call next
-          Operation* nextReturn = nextBlock.getTerminator();
-          Value nextPos = nextReturn->getOperand(0);
-          rewriter.inlineBlockBefore(&nextBlock, 
-                                     nextCoord.getDefiningOp(), 
-                                     after->getArgument(0));
-          rewriter.create<scf::YieldOp>(loc, ValueRange{nextCoord, nextPos});
-          rewriter.eraseOp(nextReturn); 
-
-          return success();
         }
       }
     }
+
+    if (stepperLooplets.empty()) {
+      return failure();
+    }
+
+    // Main Stepper Rewrite        
+    //auto stepperLooplet2 = rewriter.clone(*lookupLooplet);
+    //Block &bodyBlock = stpperLooplet2->getRegion(2).front();
+    //Block &nextBlock = stpperLooplet2->getRegion(3).front();
+
+    Value loopLowerBound = forOp.getLowerBound();
+    Value loopUpperBound = forOp.getUpperBound();
     
-    return failure();
+    // Call Seek
+    SmallVector<Value, 4> seekPositions;
+    for (auto& stepperLooplet : stepperLooplets) {
+      Block &seekBlock = stepperLooplet.getRegion(0).front();
+
+      Operation* seekReturn = seekBlock.getTerminator();
+      Value seekPosition = seekReturn->getOperand(0);
+      rewriter.inlineBlockBefore(&seekBlock, forOp, ValueRange(loopLowerBound));
+      seekPositions.push_back(seekPosition);
+      rewriter.eraseOp(seekReturn); 
+    }
+ 
+    // create while Op
+    seekPositions.push_back(loopLowerBound);
+    unsigned numIterArgs = seekPositions.size();
+    ValueRange iterArgs(seekPositions);
+    scf::WhileOp whileOp = rewriter.create<scf::WhileOp>(
+        loc, iterArgs.getTypes(), iterArgs);
+
+
+    // fill condition
+    SmallVector<Location, 4> locations(numIterArgs, loc);
+    Block *before = rewriter.createBlock(&whileOp.getBefore(), {},
+                                         iterArgs.getTypes(), locations);
+    rewriter.setInsertionPointToEnd(before);
+    Value cond = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ugt,
+                                                before->getArgument(numIterArgs-1), 
+                                                loopUpperBound);
+    rewriter.create<scf::ConditionOp>(loc, cond, before->getArguments());
+
+
+    // after region of while op 
+    Block *after = rewriter.createBlock(&whileOp.getAfter(), {},
+                                        iterArgs.getTypes(), locations);
+
+    rewriter.setInsertionPointToEnd(after);
+    rewriter.moveOpBefore(forOp, after, after->end());
+          
+
+    // call stop then intersection
+    rewriter.setInsertionPoint(forOp);
+    SmallVector<Value, 4> stopCoords;
+    Value intersectUpperBound = loopUpperBound;
+    for (unsigned i = 0; i < stepperLooplets.size(); i++) {
+      auto stepperLooplet = stepperLooplets[i];
+      Block &stopBlock = stepperLooplet.getRegion(1).front();
+      Operation* stopReturn = stopBlock.getTerminator();
+      Value stopCoord = stopReturn->getOperand(0);
+      rewriter.inlineBlockBefore(&stopBlock, forOp, after->getArgument(i));
+      rewriter.eraseOp(stopReturn);
+      if (!stopCoord.getType().isIndex()) {
+        stopCoord = rewriter.create<arith::IndexCastOp>(
+            loc, rewriter.getIndexType(), stopCoord);
+      }
+      intersectUpperBound = rewriter.create<arith::MinUIOp>(
+          loc, intersectUpperBound, stopCoord);
+      stopCoords.push_back(stopCoord);
+    }
+    forOp.setLowerBound(after->getArgument(numIterArgs-1));
+    forOp.setUpperBound(intersectUpperBound); 
+
+
+
+
+    // call body and replace access 
+    for (unsigned i = 0; i < stepperLooplets.size(); i++) {
+      auto stepperLooplet = stepperLooplets[i];      
+      Block &bodyBlock = stepperLooplet.getRegion(2).front();
+      Operation* bodyReturn = bodyBlock.getTerminator();
+      Value bodyLooplet = bodyReturn->getOperand(0);
+      rewriter.inlineBlockBefore(&bodyBlock, forOp, after->getArgument(i));
+     
+      Operation* loopletOp = stepperLooplet;
+      Operation* accessOp = mapper.lookupOrDefault(loopletOp);
+      accessOp->setOperand(0, bodyLooplet);
+      rewriter.eraseOp(bodyReturn);
+    }
+  
+    //// i = i + 1
+    rewriter.setInsertionPointToEnd(after);
+    Value nextCoord = rewriter.create<arith::AddIOp>(loc, intersectUpperBound, 
+        rewriter.create<arith::ConstantIndexOp>(loc,1));
+
+    //// call next
+    SmallVector<Value,4> nextPositions;
+    Type indexType = rewriter.getIndexType();
+    for (unsigned i = 0; i < stepperLooplets.size(); i++) {
+      auto stepperLooplet = stepperLooplets[i];            
+      auto currPos = after->getArgument(i);
+      auto stopCoord = stopCoords[i];
+
+      Block &nextBlock = stepperLooplet.getRegion(3).front();
+      Operation* nextReturn = nextBlock.getTerminator();
+      Value nextPos = nextReturn->getOperand(0);
+      
+      rewriter.setInsertionPointToEnd(after);
+      Value eq = rewriter.create<arith::CmpIOp>(
+          loc, arith::CmpIPredicate::eq, stopCoord, intersectUpperBound);
+
+      scf::IfOp ifOp = rewriter.create<scf::IfOp>(loc, indexType, eq, true);
+      rewriter.setInsertionPointToStart(&ifOp.getThenRegion().front());
+      scf::YieldOp thenYieldOp = rewriter.create<scf::YieldOp>(loc, nextPos);
+      rewriter.inlineBlockBefore(&nextBlock, thenYieldOp, currPos);
+      
+      rewriter.setInsertionPointToStart(&ifOp.getElseRegion().front());
+      scf::YieldOp elseYieldOp = rewriter.create<scf::YieldOp>(loc, currPos);
+      
+      nextPositions.push_back(ifOp.getResult(0));
+      rewriter.eraseOp(nextReturn); 
+    }
+    nextPositions.push_back(nextCoord);
+    rewriter.setInsertionPointToEnd(after);
+    rewriter.create<scf::YieldOp>(loc, ValueRange(nextPositions));
+    //llvm::outs() << *(forOp->getBlock()->getParentOp()->getBlock()->getParentOp()) << "\n";
+
+    return success();
   }
 };
 
