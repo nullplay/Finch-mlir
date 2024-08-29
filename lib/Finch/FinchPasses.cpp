@@ -139,7 +139,6 @@ public:
             continue;
           }
           
-          rewriter.setInsertionPoint(seqLooplet);
           // Intersect with Sequence Bound and Loop Bound
           //AffineMap currLowerMap = forOp.getLowerBound().getMap();
           //AffineMap currUpperMap = forOp.getLowerBound().getMap();
@@ -171,6 +170,7 @@ public:
           //forOp.setUpperBound(ValueRange(ubOperands), newUpperMap);
 
 
+          rewriter.setInsertionPoint(forOp);
           // Main Sequence Rewrite          
           IRMapping mapper1;
           IRMapping mapper2;
@@ -215,7 +215,7 @@ public:
 
           rewriter.eraseOp(forOp);
           
-          //llvm::outs() << *(forOp->getBlock()) << "\n";
+          //llvm::outs() << *(newForOp1->getBlock()->getParentOp()->getBlock()->getParentOp()) << "\n";
           //llvm::outs() << "Done\n";
           return success();
         }
@@ -282,7 +282,7 @@ public:
           rewriter.create<scf::ConditionOp>(loc, cond, before->getArguments());
 
 
-          // main body while op 
+          // after region of while op 
           Block *after = rewriter.createBlock(&whileOp.getAfter(), {},
                                               iterArgs.getTypes(), {loc,loc});
 
@@ -327,34 +327,6 @@ public:
                                      after->getArgument(0));
           rewriter.create<scf::YieldOp>(loc, ValueRange{nextCoord, nextPos});
           rewriter.eraseOp(nextReturn); 
-
-          //if (lookupLooplet.use_empty())
-          //  rewriter.eraseOp(lookupLooplet);
-
-          //// inline whole block into for loop 
-          //llvm::outs() <<"FirstStep \n";
-          //rewriter.inlineBlockBefore(&seekBlock, &accessOp, ValueRange(indVar));
-          //rewriter.inlineBlockBefore(&bodyBlock, &accessOp, std::nullopt);
-          //rewriter.inlineBlockBefore(&nextBlock, &accessOp, std::nullopt);
-
-          //// set AccessOp's operand to lookup body
-          //accessOp.setOperand(0, bodyLooplet); 
-          //rewriter.eraseOp(bodyReturn);
- 
-          //// erase original Stepper Looplet
-          //llvm::outs() <<"ThirdStep \n";
-          //rewriter.eraseOp(lookupLooplet);
-
-          //rewriter.eraseOp(op);
-          //for (Block &block : op->getBlock()->getParent()->getBlocks())
-          //  llvm::outs() << block << "\n";
-            //printBlock(block);
-          //llvm::outs() << *(forOp->getBlock()->getParent()->getParentOp()->getBlock()) << "\n";
-          //llvm::outs() << "Done Stepper\n";
-
-          //llvm::outs() << "END \n";
-
-         
 
           return success();
         }

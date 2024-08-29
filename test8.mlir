@@ -46,7 +46,7 @@ module {
               %zeroend = arith.subi %currcrd, %1 : i32
 
               %zero_run = finch.run %0 : (i32) -> (!finch.looplet)
-              %nonzero_run = finch.run %2 : (i32) -> (!finch.looplet)
+              %nonzero_run = finch.run %1 : (i32) -> (!finch.looplet)
               %seq = finch.sequence %zeroend, %zero_run, %nonzero_run : (i32, !finch.looplet, !finch.looplet) -> (!finch.looplet)
               finch.return %seq : !finch.looplet
           }, 
@@ -101,7 +101,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %j = %b0 to %b1 step %c1 {
         %z1 = finch.access %l0, %j : i32
-        %z2 = finch.access %l0, %j : i32
+        %z2 = finch.access %l1, %j : i32
 
         %z3 = memref.load %sum[] : memref<i32>
         %z4 = arith.addi %z1, %z2 : i32
