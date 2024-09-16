@@ -9,6 +9,9 @@
 #include "Finch/FinchDialect.h"
 #include "Finch/FinchOps.h"
 #include "Finch/FinchTypes.h"
+#include "mlir/Transforms/InliningUtils.h"
+#include "mlir/IR/DialectImplementation.h"
+
 
 using namespace mlir;
 using namespace mlir::finch;
@@ -19,10 +22,19 @@ using namespace mlir::finch;
 // Finch dialect.
 //===----------------------------------------------------------------------===//
 
+struct FinchInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
+    return true;
+  }
+};
+
 void FinchDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "Finch/FinchOps.cpp.inc"
       >();
+  addInterfaces<FinchInlinerInterface>();
   registerTypes();
 }
