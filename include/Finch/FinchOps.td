@@ -131,8 +131,12 @@ def Finch_StepperOp : Finch_Op<"stepper",[Pure, NoTerminator]> {
                           AnyRegion:$next);
     let results = (outs Finch_LoopletType:$res);
 
-    let assemblyFormat = [{
-        `seek` $seek `,` `stop` $stop `,` `body` $body `,` `next` $next attr-dict 
+    let assemblyFormat = [{ 
+        `\n`
+        `seek` `=` $seek `\n` 
+        `stop` `=` $stop `\n` 
+        `body` `=` $body `\n` 
+        `next` `=` $next attr-dict 
     }];
 }
 

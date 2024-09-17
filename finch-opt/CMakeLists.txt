@@ -6,6 +6,8 @@ set(test_libs
   MLIRTestDialect
   MLIRTestPDLL
   MLIRTestPass
+  MLIRBufferizationTestPasses
+  MLIRLinalgTestPasses
   MLIRLLVMTestPasses
   MLIRTestRewrite
   )
@@ -14,9 +16,16 @@ set(LIBS
         ${dialect_libs}
         ${conversion_libs}
         ${extension_libs}
+        ${test_libs}
+
+        MLIRAnalysis
+        MLIRAffineAnalysis
+        MLIRTransforms
         MLIRArithDialect
         MLIRFuncDialect
         MLIRIndexDialect
+        MLIRLinalgDialect
+        MLIRDialect
         MLIROptLib
         MLIRPass
         MLIRFinch

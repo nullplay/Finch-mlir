@@ -8,42 +8,35 @@ module {
     }
     func.func @buffer_to_looplet(%pos : memref<index>, %ptr : memref<2xi32>, %crd : memref<?xi32>, %val : memref<?xf32>) -> !finch.looplet {
       %fp_0 = arith.constant -0.0 : f32
-      %fp_1 = arith.constant 1.1 : f32
-      %fp_2 = arith.constant 2.2 : f32
-    
-      %0 = arith.constant 0 : i32
       %1 = arith.constant 1 : i32
-      %2 = arith.constant 2 : i32
-      %3 = arith.constant 3 : i32
-      %4 = arith.constant 4 : i32
+      %c1 = arith.constant 1 : index
      
       %l0 = finch.stepper  
-          seek {
-            ^bb(%idx : index):
+          seek={
+            ^bb0(%idx : index):
               %firstpos = func.call @binarysearch(%idx, %pos, %ptr, %crd) : 
                 (index, memref<index>, memref<2xi32>, memref<?xi32>) -> (index) 
               finch.return %firstpos : index
-          },
-          stop {
+          }
+          stop={
             ^bb(%pos1 : index):
               %currcrd = memref.load %crd[%pos1] : memref<?xi32>
               finch.return %currcrd : i32 
-          }, 
-          body {
-            ^bb(%pos2 : index):
-              %currcrd = memref.load %crd[%pos2] : memref<?xi32>
-              %currval = memref.load %val[%pos2] : memref<?xf32>
+          } 
+          body={
+            ^bb(%pos1 : index):
+              %currcrd = memref.load %crd[%pos1] : memref<?xi32>
+              %currval = memref.load %val[%pos1] : memref<?xf32>
               %zeroend = arith.subi %currcrd, %1 : i32
 
               %zero_run = finch.run %fp_0 : (f32) -> (!finch.looplet)
               %nonzero_run = finch.run %currval : (f32) -> (!finch.looplet)
               %seq = finch.sequence %zeroend, %zero_run, %nonzero_run : (i32, !finch.looplet, !finch.looplet) -> (!finch.looplet)
               finch.return %seq : !finch.looplet
-          }, 
-          next {
-            ^bb(%pos3 : index):
-              %c1 = arith.constant 1 : index
-              %nextpos = arith.addi %pos3, %c1 : index
+          } 
+          next={
+            ^bb0(%pos1 : index):
+              %nextpos = arith.addi %pos1, %c1 : index
               finch.return %nextpos : index 
           }
 
@@ -52,15 +45,6 @@ module {
 
 
     func.func @test(%buffer : memref<4xf32>, %b0:index, %b1:index, %N:index)  {
-      %fp_0 = arith.constant -0.0 : f32
-      %fp_1 = arith.constant 1.1 : f32
-      %fp_2 = arith.constant 2.2 : f32
-    
-      %0 = arith.constant 0 : i32
-      %1 = arith.constant 1 : i32
-      %2 = arith.constant 2 : i32
-      %3 = arith.constant 3 : i32
-      %4 = arith.constant 4 : i32
 
       /////////////////////////////////
       // Defining 2D Tensor with Looplet      
@@ -85,10 +69,11 @@ module {
       // Main Code
       /////////////////////////////////
        
+      %fp_0 = arith.constant -0.0 : f32
       %sum = memref.alloc() : memref<f32>                                           // float* sum = []
       memref.store %fp_0, %sum[] : memref<f32>                                      // sum[0] = 0.0
-      %c1 = arith.constant 1 : index
                                                                                     
+      %c1 = arith.constant 1 : index
       scf.for %j = %b0 to %b1 step %c1 {                                            // for j in range(b0,b1) :
         %z1 = finch.access %l0, %j : f32                                            //   z1 = l0[j]
         %z2 = finch.access %l1, %j : f32                                            //   z2 = l1[j]

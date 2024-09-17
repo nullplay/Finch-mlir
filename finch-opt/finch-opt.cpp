@@ -15,21 +15,45 @@
 #include "Finch/FinchDialect.h"
 #include "Finch/FinchPasses.h"
 
+namespace mlir {
+namespace test {
+void registerTestLinalgDecomposeOps();
+void registerTestLinalgDropUnitDims();
+void registerTestLinalgElementwiseFusion();
+void registerTestLinalgGreedyFusion();
+void registerTestLinalgRankReduceContractionOps();
+void registerTestLinalgTransforms();
+}
+}
+
+void registerTestPasses() {
+  mlir::test::registerTestLinalgDecomposeOps();
+  mlir::test::registerTestLinalgDropUnitDims();
+  mlir::test::registerTestLinalgElementwiseFusion();
+  mlir::test::registerTestLinalgGreedyFusion();
+  mlir::test::registerTestLinalgRankReduceContractionOps();
+  mlir::test::registerTestLinalgTransforms();
+}
 
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::finch::registerPasses();
+  registerTestPasses();
   // TODO: Register finch passes here.
 
+
   mlir::DialectRegistry registry;
-  registry.insert<mlir::finch::FinchDialect,
-                  mlir::index::IndexDialect, mlir::affine::AffineDialect,
-                  mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::memref::MemRefDialect, mlir::scf::SCFDialect>();
+  //registry.insert<mlir::finch::FinchDialect,
+  //                mlir::index::IndexDialect, mlir::affine::AffineDialect,
+  //                mlir::arith::ArithDialect, mlir::func::FuncDialect,
+  //                mlir::memref::MemRefDialect, mlir::scf::SCFDialect, 
+  //                mlir::sparse_tensor::SparseTensorDialect, mlir::linalg::LinalgDialect,
+  //                mlir::vector::VectorDialect, mlir::bufferization::BufferizationDialect>();
   // Add the following to include *all* MLIR Core dialects, or selectively
   // include what you need like above. You only need to register dialects that
   // will be *parsed* by the tool, not the one generated
-  //registerAllDialects(registry);
+  
+  registerAllDialects(registry);
 
   //mlir::registerAllPasses();
   mlir::func::registerAllExtensions(registry); 
