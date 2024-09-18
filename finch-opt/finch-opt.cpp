@@ -53,6 +53,7 @@ int main(int argc, char **argv) {
   // include what you need like above. You only need to register dialects that
   // will be *parsed* by the tool, not the one generated
   
+  registry.insert<mlir::finch::FinchDialect>(),
   registerAllDialects(registry);
 
   //mlir::registerAllPasses();

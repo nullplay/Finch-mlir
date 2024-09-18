@@ -64,7 +64,7 @@ public:
     if (op.getNumOperands() > 2) {
       unsigned storeNumIndex = op.getNumOperands() - 2;
       unsigned loadNumIndex = loadOp.getNumOperands() - 1;
-     
+    
       if (storeNumIndex != loadNumIndex) {
         isIndexSame = false;
       } else {
@@ -139,37 +139,6 @@ public:
             continue;
           }
           
-          // Intersect with Sequence Bound and Loop Bound
-          //AffineMap currLowerMap = forOp.getLowerBound().getMap();
-          //AffineMap currUpperMap = forOp.getLowerBound().getMap();
-          //auto lbExprs = llvm::to_vector<4>(currLowerMap.getResults());
-          //auto ubExprs = llvm::to_vector<4>(currUpperMap.getResults());
-          //lbExprs.push_back(rewriter.getAffineSymbolExpr(
-          //    currLowerMap.getNumSymbols()));
-          //ubExprs.push_back(rewriter.getAffineSymbolExpr(
-          //    currUpperMap.getNumSymbols()));
-          //AffineMap newLowerMap = AffineMap::get(
-          //    currLowerMap.getNumDims(),  
-          //    currLowerMap.getNumSymbols()+1,  
-          //    lbExprs, rewriter.getContext());
-          //AffineMap newUpperMap = AffineMap::get(
-          //    currUpperMap.getNumDims(),  
-          //    currUpperMap.getNumSymbols()+1,  
-          //    ubExprs, rewriter.getContext());
-
-          //auto lbOperands = llvm::to_vector<4>(forOp.getLowerBoundOperands());
-          //auto ubOperands = llvm::to_vector<4>(forOp.getUpperBoundOperands());
-          //Value seqLb = rewriter.create<arith::IndexCastOp>( /* number->index */
-          //    seqLooplet.getLoc(), rewriter.getIndexType(), seqLooplet.getOperand(0)); 
-          //Value seqUb = rewriter.create<arith::IndexCastOp>( /* number->index */
-          //    seqLooplet.getLoc(), rewriter.getIndexType(), seqLooplet.getOperand(1));
-          //lbOperands.push_back(seqLb);
-          //ubOperands.push_back(seqUb);
-
-          //forOp.setLowerBound(ValueRange(lbOperands), newLowerMap);
-          //forOp.setUpperBound(ValueRange(ubOperands), newUpperMap);
-
-
           rewriter.setInsertionPoint(forOp);
           // Main Sequence Rewrite          
           IRMapping mapper1;
@@ -192,24 +161,24 @@ public:
           // Intersection
           Value loopLb = forOp.getLowerBound();
           Value loopUb = forOp.getUpperBound();
+
+          //       firstBodyUb=secondBodyLb
+          //                  v
+          // [---firstBody---)[---secondBody---)
           Value firstBodyUb = seqLooplet.getOperand(0);
-          Value c1 = rewriter.create<arith::ConstantIntOp>(
-              loc, 1, firstBodyUb.getType().getIntOrFloatBitWidth());
-          Value secondBodyLb = rewriter.create<arith::AddIOp>(
-              loc, firstBodyUb, c1);
-          // Main intersect
-          Value firstBodyUbIndex = firstBodyUb;
-          Value secondBodyLbIndex = secondBodyLb;
+          Value secondBodyLb = firstBodyUb;
           if (!firstBodyUb.getType().isIndex()) {
-            firstBodyUbIndex = rewriter.create<arith::IndexCastOp>(
+            firstBodyUb = rewriter.create<arith::IndexCastOp>(
                 loc, rewriter.getIndexType(), firstBodyUb);
-            secondBodyLbIndex = rewriter.create<arith::IndexCastOp>(
+            secondBodyLb = rewriter.create<arith::IndexCastOp>(
                 loc, rewriter.getIndexType(), secondBodyLb);
-          }
+          }         
+          
+          // Main intersect
           Value newFirstLoopUb = rewriter.create<arith::MinUIOp>(
-              loc, loopUb, firstBodyUbIndex);
+              loc, loopUb, firstBodyUb);
           Value newSecondLoopLb = rewriter.create<arith::MaxUIOp>(
-              loc, loopLb, secondBodyLbIndex);
+              loc, loopLb, secondBodyLb);
           cast<scf::ForOp>(newForOp1).setUpperBound(newFirstLoopUb);
           cast<scf::ForOp>(newForOp2).setLowerBound(newSecondLoopLb);
 
@@ -240,14 +209,20 @@ public:
     // Collect all the steppers from accesses
     IRMapping mapper;
     SmallVector<finch::StepperOp, 4> stepperLooplets;
+    SmallVector<finch::AccessOp, 4> accessOps;
     for (auto& accessOp : *forOp.getBody()) {
       if (isa<mlir::finch::AccessOp>(accessOp)) {
         Value accessVar = accessOp.getOperand(1);
         if (accessVar == indVar) {
           Operation* looplet = accessOp.getOperand(0).getDefiningOp();
           if (isa<finch::StepperOp>(looplet)) {
-            stepperLooplets.push_back(cast<finch::StepperOp>(looplet));
-            mapper.map(looplet, &accessOp);
+            // There can be multiple uses of this Stepper.
+            // We don't want to erase original Stepper when lowering
+            // because of other use.
+            // So everytime we lower Stepper, clone it.
+            Operation* clonedStepper = rewriter.clone(*looplet);  
+            stepperLooplets.push_back(cast<finch::StepperOp>(clonedStepper));
+            accessOps.push_back(cast<finch::AccessOp>(accessOp));
           }
         }
       }
@@ -258,13 +233,10 @@ public:
     }
 
     // Main Stepper Rewrite        
-    //auto stepperLooplet2 = rewriter.clone(*lookupLooplet);
-    //Block &bodyBlock = stpperLooplet2->getRegion(2).front();
-    //Block &nextBlock = stpperLooplet2->getRegion(3).front();
-
     Value loopLowerBound = forOp.getLowerBound();
     Value loopUpperBound = forOp.getUpperBound();
-    
+
+    //llvm::outs() << "(1)\n";
     // Call Seek
     SmallVector<Value, 4> seekPositions;
     for (auto& stepperLooplet : stepperLooplets) {
@@ -290,7 +262,7 @@ public:
     Block *before = rewriter.createBlock(&whileOp.getBefore(), {},
                                          iterArgs.getTypes(), locations);
     rewriter.setInsertionPointToEnd(before);
-    Value cond = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ugt,
+    Value cond = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult,
                                                 before->getArgument(numIterArgs-1), 
                                                 loopUpperBound);
     rewriter.create<scf::ConditionOp>(loc, cond, before->getArguments());
@@ -304,6 +276,7 @@ public:
     rewriter.moveOpBefore(forOp, after, after->end());
           
 
+    //llvm::outs() << "(2)\n";
     // call stop then intersection
     rewriter.setInsertionPoint(forOp);
     SmallVector<Value, 4> stopCoords;
@@ -328,6 +301,8 @@ public:
 
 
 
+    //llvm::outs() << "(3)\n";
+    //llvm::outs() << *(forOp->getBlock()->getParentOp()->getBlock()->getParentOp()) << "\n";
 
     // call body and replace access 
     for (unsigned i = 0; i < stepperLooplets.size(); i++) {
@@ -337,17 +312,18 @@ public:
       Value bodyLooplet = bodyReturn->getOperand(0);
       rewriter.inlineBlockBefore(&bodyBlock, forOp, after->getArgument(i));
      
-      Operation* loopletOp = stepperLooplet;
-      Operation* accessOp = mapper.lookupOrDefault(loopletOp);
-      accessOp->setOperand(0, bodyLooplet);
+      //Operation* loopletOp = stepperLooplet;
+      //Operation* accessOp = mapper.lookupOrDefault(loopletOp);
+      //accessOp->setOperand(0, bodyLooplet);
+      accessOps[i].setOperand(0, bodyLooplet);
       rewriter.eraseOp(bodyReturn);
     }
   
-    //// i = i + 1
+    //// current Upper Bound become next iteration's lower bound 
     rewriter.setInsertionPointToEnd(after);
-    Value nextCoord = rewriter.create<arith::AddIOp>(loc, intersectUpperBound, 
-        rewriter.create<arith::ConstantIndexOp>(loc,1));
+    Value nextCoord = intersectUpperBound;
 
+    //llvm::outs() << "(4)\n";
     //// call next
     SmallVector<Value,4> nextPositions;
     Type indexType = rewriter.getIndexType();

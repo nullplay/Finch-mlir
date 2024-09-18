@@ -105,7 +105,7 @@ def Finch_SequenceOp : Finch_Op<"sequence", [Pure]> {
         ```
     }];
 
-    let arguments = (ins I32:$split, 
+    let arguments = (ins AnyNumberOrIndex:$split, 
                          Finch_LoopletType:$val1,
                          Finch_LoopletType:$val2); 
     let results = (outs Finch_LoopletType:$res);

@@ -41,6 +41,7 @@ def Finch_LoopletType : TypeDef<Finch_Dialect, "Looplet", []> {
 }
 
 def AnyNumber : AnyTypeOf<[AnyInteger, AnyFloat]>;
+def AnyNumberOrIndex : AnyTypeOf<[AnyInteger, AnyFloat, Index]>;
 def Looplet : AnyTypeOf<[Finch_LoopletType]>;
 def LoopletOrNumber : AnyTypeOf<[Finch_LoopletType, AnyNumber]>;
 
