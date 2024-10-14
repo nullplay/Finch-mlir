@@ -43,8 +43,9 @@ add_mlir_python_common_capi_library(FinchPythonCAPI
     # TODO: Remove this in favor of showing fine grained registration once
     # available.
     MLIRPythonExtension.ExecutionEngine
-    MLIRPythonSources.ExecutionEngine
     MLIRPythonExtension.RegisterEverything
+    MLIRPythonSources.ExecutionEngine
+    MLIRPythonSources.Dialects
     MLIRPythonSources.Core
 )
 

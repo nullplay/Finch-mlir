@@ -1,7 +1,13 @@
 # RUN: %python %s | FileCheck %s
 
 from mlir_finch.ir import *
-from mlir_finch.dialects import builtin as builtin_d, finch as finch_d
+from mlir_finch.dialects import (
+    builtin as builtin_d,
+    finch as finch_d,
+    linalg as linalg_d,
+    sparse_tensor as sparse_tensor_d,
+)
+
 
 with Context():
     finch_d.register_dialect()
