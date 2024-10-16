@@ -27,6 +27,7 @@ namespace mlir::finch {
 #define GEN_PASS_DEF_FINCHLOOPLETRUN
 #define GEN_PASS_DEF_FINCHLOOPLETSEQUENCE
 #define GEN_PASS_DEF_FINCHLOOPLETSTEPPER
+#define GEN_PASS_DEF_FINCHLOOPLETLOOKUP
 #define GEN_PASS_DEF_FINCHLOOPLETPASS
 #include "Finch/FinchPasses.h.inc"
 
@@ -89,16 +90,8 @@ public:
     rewriter.inlineBlockBefore(&defBlock, op, ValueRange(levelPos));
     rewriter.eraseOp(retLooplet);
     rewriter.replaceOp(op, looplet);
-    //llvm::outs() << *(op->getBlock()->getParentOp()) << "\n";
-
     
     return success();
-
-    //if (op.getSymName() == "bar") {
-    //  rewriter.modifyOpInPlace(op, [&op]() { op.setSymName("foo"); });
-    //  return success();
-    //}
-    //return failure();
   }
 };
 
@@ -301,9 +294,31 @@ public:
           cast<scf::ForOp>(newForOp1).setUpperBound(newFirstLoopUb);
           cast<scf::ForOp>(newForOp2).setLowerBound(newSecondLoopLb);
 
+          //llvm::outs() << *(newForOp1->getBlock()->getParentOp()->getBlock()->getParentOp()) << "\n";
+
+          // Build a chain
+          // %0 = tensor.empty()
+          // %1 = scf.for $i = $b0 to %b1 step %c1 iter_args(%v = %0) //forOp
+          // %2 = scf.for $i = $b0 to %b1 step %c1 iter_args(%v = %0) //newForOp1
+          // %3 = scf.for $i = $b0 to %b1 step %c1 iter_args(%v = %0) //newForOp2
+          // return %1
+          //
+          // vvv
+          //
+          // %0 = tensor.empty()
+          // %1 = scf.for $i = $b0 to %b1 step %c1 iter_args(%v = %0) //newForOp1  
+          // %2 = scf.for $i = $b0 to %b1 step %c1 iter_args(%v = %1) //newForOp2
+          // return %2
+
+          // First three are lowerbound, upperbound, and step
+          int numIterArgs = newForOp2->getNumOperands() - 3;
+          if (numIterArgs > 0) {
+            rewriter.replaceAllUsesWith(forOp->getResults(), newForOp2->getResults());
+            newForOp2->setOperands(3, numIterArgs, newForOp1->getResults());
+          }
+
           rewriter.eraseOp(forOp);
           
-          //llvm::outs() << *(newForOp1->getBlock()->getParentOp()->getBlock()->getParentOp()) << "\n";
           //llvm::outs() << "Done\n";
           return success();
         }
@@ -314,6 +329,41 @@ public:
   }
 };
 
+
+class FinchLoopletLookupRewriter : public OpRewritePattern<scf::ForOp> {
+public:
+  using OpRewritePattern<scf::ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(scf::ForOp forOp,
+                                PatternRewriter &rewriter) const final {
+    
+    for (auto& accessOp : *forOp.getBody()) {
+      if (isa<mlir::finch::AccessOp>(accessOp)) {
+        auto accessVar = accessOp.getOperand(1);
+        if (accessVar == forOp.getInductionVar()) {
+          Operation* lookupLooplet = accessOp.getOperand(0).getDefiningOp();
+          if (!isa<finch::LookupOp>(lookupLooplet)) {
+            continue;
+          }
+            
+          Operation* lookupLooplet_ = rewriter.clone(*lookupLooplet);  
+          
+          Block &bodyBlock = lookupLooplet_->getRegion(0).front();
+          Operation* bodyReturn = bodyBlock.getTerminator();
+          Value bodyLooplet = bodyReturn->getOperand(0);
+          rewriter.inlineBlockBefore(&bodyBlock, &accessOp, forOp.getInductionVar());
+          accessOp.setOperand(0, bodyLooplet);
+          rewriter.eraseOp(bodyReturn);
+          return success();
+        }
+      }
+    }
+    return failure();
+  }
+};
+
+
+
 class FinchLoopletStepperRewriter : public OpRewritePattern<scf::ForOp> {
 public:
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
@@ -322,6 +372,7 @@ public:
                                 PatternRewriter &rewriter) const final {
     auto indVar = forOp.getInductionVar();
     
+    //llvm::outs() << "(0)\n";
     OpBuilder builder(forOp);
     Location loc = forOp.getLoc();
 
@@ -339,6 +390,7 @@ public:
             // We don't want to erase original Stepper when lowering
             // because of other use.
             // So everytime we lower Stepper, clone it.
+            llvm::outs() << *looplet << "\n";
             Operation* clonedStepper = rewriter.clone(*looplet);  
             stepperLooplets.push_back(cast<finch::StepperOp>(clonedStepper));
             accessOps.push_back(cast<finch::AccessOp>(accessOp));
@@ -346,6 +398,8 @@ public:
         }
       }
     }
+    //llvm::outs() << "(0')\n";
+    //llvm::outs() << *(forOp->getBlock()->getParentOp()->getBlock()->getParentOp()) << "\n";
 
     if (stepperLooplets.empty()) {
       return failure();
@@ -473,7 +527,23 @@ public:
     nextPositions.push_back(nextCoord);
     rewriter.setInsertionPointToEnd(after);
     rewriter.create<scf::YieldOp>(loc, ValueRange(nextPositions));
+    //llvm::outs() << "(5)\n";
     //llvm::outs() << *(forOp->getBlock()->getParentOp()->getBlock()->getParentOp()) << "\n";
+
+    // Todo:Build a chain
+    // %0 = tensor.empty()
+    // %1 = scf.for $i = $b0 to %b1 step %c1 iter_args(%v = %0) //forOp
+    // return %1
+    //
+    // vvv
+    //
+    // %0 = tensor.empty()
+    // %res:4 = scf.while iter_args(%pos1=%pos1_, %pos2=%pos2_, %idx=%idx_, %tensor=%0) {
+    //    %2 = scf.for $i = $b0 to %b1 step %c1 iter_args(%v = %tensor) //newForOp2
+    // }
+    // return %res#3
+
+
 
     return success();
   }
@@ -534,6 +604,20 @@ public:
   void runOnOperation() final {
     RewritePatternSet patterns(&getContext());
     patterns.add<FinchLoopletSequenceRewriter>(&getContext()); 
+    FrozenRewritePatternSet patternSet(std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
+      signalPassFailure();
+  }
+};
+
+class FinchLoopletLookup
+    : public impl::FinchLoopletLookupBase<FinchLoopletLookup> {
+public:
+  using impl::FinchLoopletLookupBase<
+      FinchLoopletLookup>::FinchLoopletLookupBase;
+  void runOnOperation() final {
+    RewritePatternSet patterns(&getContext());
+    patterns.add<FinchLoopletLookupRewriter>(&getContext()); 
     FrozenRewritePatternSet patternSet(std::move(patterns));
     if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
       signalPassFailure();

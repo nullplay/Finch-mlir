@@ -118,6 +118,23 @@ def Finch_SequenceOp : Finch_Op<"sequence", [Pure]> {
     }];
 }
 
+def Finch_LookupOp : Finch_Op<"lookup",[Pure, NoTerminator]> {
+    let summary = "Finch Lookup Looplets";
+    let description = [{
+        ```mlir
+        %3 = finch.stepper %lb %ub : 
+        ```
+    }];
+
+    //let arguments = () ;
+    let regions = (region AnyRegion:$body);
+    let results = (outs Finch_LoopletType:$res);
+
+    let assemblyFormat = [{ 
+        `\n`
+        `body` `=` $body  attr-dict 
+    }];
+}
 
 def Finch_StepperOp : Finch_Op<"stepper",[Pure, NoTerminator]> {
     let summary = "Finch Stepper Looplets";

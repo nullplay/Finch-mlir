@@ -1,7 +1,7 @@
 // RUN: finch-opt %s | finch-opt | FileCheck %s
 //./bin/finch-opt --loop-invariant-code-motion --inline --finch-instantiate --finch-looplet-pass --finch-simplifier --finch-instantiate --finch-looplet-pass --finch-simplifier --finch-instantiate --finch-looplet-pass --finch-simplifier --sparsifier  ../test11.mlir  |  mlir-cpu-runner -e main -entry-point-result=void -shared-libs=/Users/jaeyeonwon/llvm-project/build/lib/libmlir_runner_utils.dylib,/Users/jaeyeonwon/llvm-project/build/lib/libmlir_c_runner_utils.dylib
 
-#DCSR = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>
+#CSR = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>
 module {
 
     func.func private @printMemrefF32(%ptr:memref<*xf32>) attributes {llvm.emit_c_interface}
@@ -13,27 +13,39 @@ module {
       %c8 = arith.constant 8 : index
       %f1 = arith.constant 1.0 : f32
 
-      %6 = tensor.empty() : tensor<1024x1024xf32, #DCSR>
-      %7 = scf.for %i = %c0 to %c8 step %c1 iter_args(%vin = %6) -> tensor<1024x1024xf32, #DCSR> {
+      %6 = tensor.empty() : tensor<32x32xf32, #CSR>
+      %7 = scf.for %i = %c0 to %c8 step %c1 iter_args(%vin = %6) -> tensor<32x32xf32, #CSR> {
         %ii = arith.muli %i, %jump : index
-        %tmp = scf.for %j = %c0 to %c8 step %c1 iter_args(%vin2 = %vin) -> tensor<1024x1024xf32, #DCSR> {
+        %tmp = scf.for %j = %c0 to %c8 step %c1 iter_args(%vin2 = %vin) -> tensor<32x32xf32, #CSR> {
           %jj = arith.muli %j, %jump : index
-          %vout = tensor.insert %f1 into %vin2[%ii, %jj] : tensor<1024x1024xf32, #DCSR>
-          scf.yield %vout : tensor<1024x1024xf32, #DCSR>
+          %vout = tensor.insert %f1 into %vin2[%ii, %jj] : tensor<32x32xf32, #CSR>
+          scf.yield %vout : tensor<32x32xf32, #CSR>
         }
-        scf.yield %tmp : tensor<1024x1024xf32, #DCSR>
+        scf.yield %tmp : tensor<32x32xf32, #CSR>
       }
 
-      %8 = sparse_tensor.load %7 hasInserts : tensor<1024x1024xf32, #DCSR>
+      %8 = sparse_tensor.load %7 hasInserts : tensor<32x32xf32, #CSR>
       
-      %9 = sparse_tensor.positions %8 {level = 0 :index} : tensor<1024x1024xf32, #DCSR> to memref<?xindex>
-      %10 = sparse_tensor.coordinates %8 {level = 0 :index} : tensor<1024x1024xf32, #DCSR> to memref<?xindex>
+      %9 = sparse_tensor.positions %8 {level = 0 :index} : tensor<32x32xf32, #CSR> to memref<?xindex>
+      %10 = sparse_tensor.coordinates %8 {level = 0 :index} : tensor<32x32xf32, #CSR> to memref<?xindex>
 
-      %11 = sparse_tensor.positions %8 {level = 1 :index} : tensor<1024x1024xf32, #DCSR> to memref<?xindex>
-      %12 = sparse_tensor.coordinates %8 {level = 1 :index} : tensor<1024x1024xf32, #DCSR> to memref<?xindex>
+      %11 = sparse_tensor.positions %8 {level = 1 :index} : tensor<32x32xf32, #CSR> to memref<?xindex>
+      %12 = sparse_tensor.coordinates %8 {level = 1 :index} : tensor<32x32xf32, #CSR> to memref<?xindex>
 
-      %13 = sparse_tensor.values %8 : tensor<1024x1024xf32, #DCSR> to memref<?xf32>
+      %13 = sparse_tensor.values %8 : tensor<32x32xf32, #CSR> to memref<?xf32>
       return %9,%10 ,%11,%12 ,%13: memref<?xindex>, memref<?xindex>, memref<?xindex>, memref<?xindex>, memref<?xf32>
+    }
+
+    func.func private @dense_level(%pos: index, %shape: index) -> !finch.looplet {
+      %l0 = finch.lookup
+        body = {
+          ^bb(%idx : index) :
+            %0 = arith.muli %pos, %shape : index
+            %1 = arith.addi %0, %idx : index
+            %2 = finch.nextlevel %1 : (index) -> (!finch.looplet)
+            finch.return %2 : !finch.looplet
+        }
+      return %l0 : !finch.looplet
     }
 
 
@@ -118,52 +130,32 @@ module {
       %c2 = arith.constant 2 : index
       %c3 = arith.constant 3 : index
       %buff:5 = call @buffers_from_sparsematrix(%c2) : (index) -> (memref<?xindex>, memref<?xindex>, memref<?xindex>, memref<?xindex>, memref<?xf32>)
-      %buff2:5 = call @buffers_from_sparsematrix(%c3) : (index) -> (memref<?xindex>, memref<?xindex>, memref<?xindex>, memref<?xindex>, memref<?xf32>)
 
       %bx = memref.cast %buff#0 :  memref<?xindex> to memref<*xindex>
       %by = memref.cast %buff#1 :  memref<?xindex> to memref<*xindex>
       %bz = memref.cast %buff#2 :  memref<?xindex> to memref<*xindex>
       %bw = memref.cast %buff#3 :  memref<?xindex> to memref<*xindex>
       %bv = memref.cast %buff#4 :  memref<?xf32> to memref<*xf32>
-      call @printMemrefInd(%bx): (memref<*xindex>) -> ()
-      call @printMemrefInd(%by): (memref<*xindex>) -> ()
+      //call @printMemrefInd(%bx): (memref<*xindex>) -> ()
+      //call @printMemrefInd(%by): (memref<*xindex>) -> ()
       call @printMemrefInd(%bz): (memref<*xindex>) -> ()
       call @printMemrefInd(%bw): (memref<*xindex>) -> ()
       call @printMemrefF32(%bv): (memref<*xf32>) -> ()
 
 
-      %bx2 = memref.cast %buff2#0 :  memref<?xindex> to memref<*xindex>
-      %by2 = memref.cast %buff2#1 :  memref<?xindex> to memref<*xindex>
-      %bz2 = memref.cast %buff2#2 :  memref<?xindex> to memref<*xindex>
-      %bw2 = memref.cast %buff2#3 :  memref<?xindex> to memref<*xindex>
-      %bv2 = memref.cast %buff2#4 :  memref<?xf32> to memref<*xf32>
-      call @printMemrefInd(%bx2): (memref<*xindex>) -> ()
-      call @printMemrefInd(%by2): (memref<*xindex>) -> ()
-      call @printMemrefInd(%bz2): (memref<*xindex>) -> ()
-      call @printMemrefInd(%bw2): (memref<*xindex>) -> ()
-      call @printMemrefF32(%bv2): (memref<*xf32>) -> ()
-
-
       /////////////////////////////////
       // Wrap memrefs to Looplets
       /////////////////////////////////
-
       %ptr1A = memref.cast %buff#0 :  memref<?xindex> to memref<?xindex>
       %crd1A = memref.cast %buff#1 :  memref<?xindex> to memref<?xindex>
       %ptr2A = memref.cast %buff#2 :  memref<?xindex> to memref<?xindex>
       %crd2A = memref.cast %buff#3 :  memref<?xindex> to memref<?xindex>
       %valA = memref.cast %buff#4 :  memref<?xf32> to memref<?xf32>
 
-      %ptr1B = memref.cast %buff2#0 :  memref<?xindex> to memref<?xindex>
-      %crd1B = memref.cast %buff2#1 :  memref<?xindex> to memref<?xindex>
-      %ptr2B = memref.cast %buff2#2 :  memref<?xindex> to memref<?xindex>
-      %crd2B = memref.cast %buff2#3 :  memref<?xindex> to memref<?xindex>
-      %valB = memref.cast %buff2#4 :  memref<?xf32> to memref<?xf32>
-
-
+      %shape = arith.constant 32 : index
       %ALvl0 = finch.definelevel {
         ^bb0(%pos : index) :
-          %l = func.call @sparse_level(%pos, %ptr1A, %crd1A): (index, memref<?xindex>, memref<?xindex>) -> !finch.looplet
+          %l = func.call @dense_level(%pos, %shape): (index, index) -> !finch.looplet
           finch.return %l : !finch.looplet
       }
 
@@ -179,25 +171,6 @@ module {
           finch.return %l : !finch.looplet
       }
 
-      %BLvl0 = finch.definelevel {
-        ^bb0(%pos : index) :
-          %l = func.call @sparse_level(%pos, %ptr1B, %crd1B): (index, memref<?xindex>, memref<?xindex>) -> !finch.looplet
-          finch.return %l : !finch.looplet
-      }
-
-      %BLvl1 = finch.definelevel {
-        ^bb0(%pos : index) :
-          %l = func.call @sparse_level(%pos, %ptr2B, %crd2B): (index, memref<?xindex>, memref<?xindex>) -> !finch.looplet
-          finch.return %l : !finch.looplet
-      }
-
-      %BLvl2 = finch.definelevel {
-        ^bb(%pos:index):
-          %l = func.call @element_level(%pos, %valB): (index, memref<?xf32>) -> !finch.looplet
-          finch.return %l : !finch.looplet
-      }
-
-
 
       /////////////////////////////////////
       ////// Main Code
@@ -209,15 +182,11 @@ module {
 
       %c1 = arith.constant 1 : index
       %b0 = arith.constant 0 : index
-      %b1 = arith.constant 100 : index
+      %b1 = arith.constant 32 : index
 
-      %out = tensor.empty() : tensor<1024x1024xf32, #DCSR>
       scf.for %i = %b0 to %b1 step %c1 {                                           
         %l0 = finch.getlevel %ALvl0, %c0 : (!finch.looplet, index) -> (!finch.looplet)
         %p1 = finch.access %l0, %i : index                             
-
-        %l0B = finch.getlevel %BLvl0, %c0 : (!finch.looplet, index) -> (!finch.looplet)
-        %p1B = finch.access %l0B, %i : index                
 
         scf.for %j = %b0 to %b1 step %c1 {                                           
           %l1 = finch.getlevel %ALvl1, %p1 : (!finch.looplet, index) -> (!finch.looplet)
@@ -225,12 +194,7 @@ module {
 
           %l2 = finch.getlevel %ALvl2, %p2 : (!finch.looplet, index) -> (!finch.looplet)
           %v = finch.access %l2, %j : f32                                           
-
-          %l1B = finch.getlevel %BLvl1, %p1B : (!finch.looplet, index) -> (!finch.looplet)
-          %p2B = finch.access %l1B, %j : index                              
-
-          %l2B = finch.getlevel %BLvl2, %p2B : (!finch.looplet, index) -> (!finch.looplet)
-          %vB = finch.access %l2B, %j : f32                                           
+          %vB = arith.constant 1.0 : f32                                           
 
           %z3 = memref.load %sum[] : memref<f32>     
           %z4 = arith.mulf %v, %vB  : f32    
@@ -240,7 +204,7 @@ module {
       }
 
    
-      // Print %sum
+      //// Print %sum
       %z = memref.cast %sum :  memref<f32> to memref<*xf32>
       call @printMemrefF32(%z): (memref<*xf32>) -> ()
       

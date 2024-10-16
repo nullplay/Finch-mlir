@@ -98,6 +98,17 @@ def FinchLoopletStepper: Pass<"finch-looplet-stepper"> {
   }];
 }
 
+def FinchLoopletLookup: Pass<"finch-looplet-lookup"> {
+  let summary = "Compiler Pass for Lookup Looplets";
+  let description = [{
+    Compiler Pass for handling lookup looplets
+    ```
+    to be filled.
+
+    ```
+  }];
+}
+
 def FinchLoopletPass: Pass<"finch-looplet-pass"> {
   let summary = "Compiler Pass for Looplets";
   let description = [{
