@@ -11,8 +11,20 @@
 
 include "mlir/Pass/PassBase.td"
 
-def FinchSwitchBarFoo: Pass<"finch-switch-bar-foo"> {
-  let summary = "Switches the name of a FuncOp named `bar` to `foo` and folds.";
+def FinchInstantiate: Pass<"finch-instantiate"> {
+  let summary = "Instantiate Looplet";
+  let description = [{
+    Compiler Pass for handling all looplets
+    ```
+    to be filled.
+
+    ```
+  }];
+}
+
+
+def FinchSimplifier: Pass<"finch-simplifier"> {
+  let summary = "finch simplifier";
   let description = [{
     Switches the name of a FuncOp named `bar` to `foo` and folds.
     ```
@@ -96,6 +108,7 @@ def FinchLoopletPass: Pass<"finch-looplet-pass"> {
     ```
   }];
 }
+
 
 
 

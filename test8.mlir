@@ -1,5 +1,7 @@
 // RUN: finch-opt %s | finch-opt | FileCheck %s
 
+// ./build/bin/finch-opt --inline --finch-looplet-pass --finch-switch-bar-foo --sparsifier test8.mlir | mlir-translate --mlir-to-llvmir -o "dotproduct.ll"
+
 #SparseVector = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
 module {
 
@@ -90,12 +92,14 @@ module {
 
 
     func.func @main()  {
+      
+      // sparse_tensor -> extract memref (pos,crd,val) from sparse_Tensor -> build looplet representation using those memrefs
+      // -> perform computation with finch dialect -> lower finch loop with finch passes to llvm -> run llvm
 
       /////////////////////////////////
       // Defining 2D Tensor with Looplet      
       /////////////////////////////////
 
-      // 2nd Dimension
       %c2 = arith.constant 2 : index
       %c3 = arith.constant 3 : index
       %buff1:3 = call @buffers_from_sparsevector(%c2) : (index) -> (memref<?xindex>, memref<?xindex>, memref<?xf32>)
@@ -115,6 +119,11 @@ module {
       call @printMemrefInd(%by2): (memref<*xindex>) -> ()
       call @printMemrefF32(%bz2): (memref<*xf32>) -> ()
 
+
+      /////////////////////////////////
+      // Wrap memrefs to Looplets
+      /////////////////////////////////
+
       %l0 = call @buffer_to_looplet(%buff1#0, %buff1#1, %buff1#2) : (memref<?xindex>, memref<?xindex>, memref<?xf32>) -> (!finch.looplet)
       %l1 = call @buffer_to_looplet(%buff2#0, %buff2#1, %buff2#2) : (memref<?xindex>, memref<?xindex>, memref<?xf32>) -> (!finch.looplet)
 
@@ -126,23 +135,22 @@ module {
       %fp_0 = arith.constant 0.0 : f32
       %sum = memref.alloc() : memref<f32>                                           // float* sum = []
       memref.store %fp_0, %sum[] : memref<f32>                                      // sum[0] = 0.0
-     
-      %U = memref.cast %sum :  memref<f32> to memref<*xf32>
-      call @printMemrefF32(%U): (memref<*xf32>) -> ()     
 
       %c1 = arith.constant 1 : index
       %b0 = arith.constant 0 : index
       %b1 = arith.constant 100 : index
+
       scf.for %j = %b0 to %b1 step %c1 {                                            // for j in range(b0,b1) :
         %z1 = finch.access %l0, %j : f32                                            //   z1 = l0[j]
         %z2 = finch.access %l1, %j : f32                                            //   z2 = l1[j]
 
         %z3 = memref.load %sum[] : memref<f32>                                      //   z3 = sum[0]
-        %z4 = arith.addf %z1, %z2 {fastmath = #arith.fastmath<nnan, ninf>} : f32    //   z4 = z1*z2
+        %z4 = arith.mulf %z1, %z2 {fastmath = #arith.fastmath<nnan, ninf>} : f32    //   z4 = z1*z2
         %z5 = arith.addf %z3, %z4 {fastmath = #arith.fastmath<nnan, ninf>} : f32    //   z5 = z3 + z4
         memref.store %z5, %sum[] : memref<f32>                                      //   sum[0] = z5
       }
-    
+   
+      // Print %sum
       %z = memref.cast %sum :  memref<f32> to memref<*xf32>
       call @printMemrefF32(%z): (memref<*xf32>) -> ()
       

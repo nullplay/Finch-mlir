@@ -48,7 +48,8 @@ int main(int argc, char **argv) {
   //                mlir::arith::ArithDialect, mlir::func::FuncDialect,
   //                mlir::memref::MemRefDialect, mlir::scf::SCFDialect, 
   //                mlir::sparse_tensor::SparseTensorDialect, mlir::linalg::LinalgDialect,
-  //                mlir::vector::VectorDialect, mlir::bufferization::BufferizationDialect>();
+  //                mlir::vector::VectorDialect, mlir::bufferization::BufferizationDialect,
+  //                mlir::tensor::TensorDialect>();
   // Add the following to include *all* MLIR Core dialects, or selectively
   // include what you need like above. You only need to register dialects that
   // will be *parsed* by the tool, not the one generated

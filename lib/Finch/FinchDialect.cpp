@@ -25,7 +25,18 @@ using namespace mlir::finch;
 struct FinchInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
-  bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
+  bool isLegalToInline(Region *dst, Region *src, bool wouldBeCloned, IRMapping &valueMapping) const final {
+    //bool isRun = isa<mlir::finch::RunOp>(op);
+    return true;
+  }
+
+  bool isLegalToInline(Operation *op, Region *region, bool wouldBeCloned, IRMapping &valueMapping) const final {
+
+    //bool isRun = isa<mlir::finch::RunOp>(op);
+    //if (isRun) {
+    //llvm::outs() << "Operation\n" << *op << "\nDone\n";
+    //llvm::outs() << "Operation\n" << *(op->getDefiningOp()) << "\nDone\n";
+    //}
     return true;
   }
 };

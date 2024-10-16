@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -21,7 +22,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir::finch {
-#define GEN_PASS_DEF_FINCHSWITCHBARFOO
+#define GEN_PASS_DEF_FINCHSIMPLIFIER
+#define GEN_PASS_DEF_FINCHINSTANTIATE
 #define GEN_PASS_DEF_FINCHLOOPLETRUN
 #define GEN_PASS_DEF_FINCHLOOPLETSEQUENCE
 #define GEN_PASS_DEF_FINCHLOOPLETSTEPPER
@@ -29,18 +31,104 @@ namespace mlir::finch {
 #include "Finch/FinchPasses.h.inc"
 
 namespace {
-class FinchSwitchBarFooRewriter : public OpRewritePattern<func::FuncOp> {
+class FinchNextLevelRewriter : public OpRewritePattern<scf::ForOp> {
 public:
-  using OpRewritePattern<func::FuncOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(func::FuncOp op,
+  using OpRewritePattern<scf::ForOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(scf::ForOp forOp,
                                 PatternRewriter &rewriter) const final {
-    if (op.getSymName() == "bar") {
-      rewriter.modifyOpInPlace(op, [&op]() { op.setSymName("foo"); });
-      return success();
+    auto indVar = forOp.getInductionVar();
+    
+    OpBuilder builder(forOp);
+    Location loc = forOp.getLoc();
+
+    for (auto& accessOp : *forOp.getBody()) {
+      if (isa<mlir::finch::AccessOp>(accessOp)) {
+        auto accessVar = accessOp.getOperand(1);
+        if (accessVar == indVar) {
+          auto nextLevelOp = accessOp.getOperand(0).getDefiningOp<finch::NextLevelOp>();
+          if (!nextLevelOp) {
+            continue;
+          }
+          
+          Value nextLevelPosition = nextLevelOp.getOperand(); 
+          rewriter.replaceOp(&accessOp, nextLevelPosition);
+
+          return success();
+        }
+      }
     }
+    
     return failure();
   }
 };
+
+class FinchInstantiateRewriter : public OpRewritePattern<finch::GetLevelOp> {
+public:
+  using OpRewritePattern<finch::GetLevelOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(finch::GetLevelOp op,
+                                PatternRewriter &rewriter) const final {
+    Value levelDef = op.getOperand(0);
+    Value levelPos = op.getOperand(1);
+    
+    Operation* lvlDefOp = levelDef.getDefiningOp<finch::DefineLevelOp>();
+    if (!lvlDefOp) {
+      return failure();
+    }
+
+    Operation* lvlPosOp = levelPos.getDefiningOp<finch::AccessOp>();
+    if (lvlPosOp) {
+      // position is coming from finch::AccessOp,
+      // which means looplet passes are not done.
+      return failure();
+    }
+
+
+    Block &defBlock = lvlDefOp->getRegion(0).front();
+    Operation* retLooplet = defBlock.getTerminator();
+    Value looplet = retLooplet->getOperand(0);
+    rewriter.inlineBlockBefore(&defBlock, op, ValueRange(levelPos));
+    rewriter.eraseOp(retLooplet);
+    rewriter.replaceOp(op, looplet);
+    //llvm::outs() << *(op->getBlock()->getParentOp()) << "\n";
+
+    
+    return success();
+
+    //if (op.getSymName() == "bar") {
+    //  rewriter.modifyOpInPlace(op, [&op]() { op.setSymName("foo"); });
+    //  return success();
+    //}
+    //return failure();
+  }
+};
+
+class FinchSemiringRewriter : public OpRewritePattern<scf::ForOp> {
+public:
+  using OpRewritePattern<scf::ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(scf::ForOp op,
+                                PatternRewriter &rewriter) const final {
+    for (auto& bodyOp : *op.getBody()) {
+      if (isa<arith::MulFOp>(bodyOp)) {
+        auto constOp = bodyOp.getOperand(1).getDefiningOp();
+        if (matchPattern(constOp, m_AnyZeroFloat())) {
+          rewriter.replaceOp(&bodyOp, constOp);
+          return success();
+        }
+      } else if (isa<arith::AddFOp>(bodyOp)) {
+        auto constOp = bodyOp.getOperand(1).getDefiningOp();
+        if (matchPattern(constOp, m_AnyZeroFloat())) {
+          rewriter.replaceOp(&bodyOp, bodyOp.getOperand(0));
+          return success();
+        }
+      }
+    }
+
+    return failure();
+  }
+};
+
+
 
 class FinchMemrefStoreLoadRewriter : public OpRewritePattern<memref::StoreOp> {
 public:
@@ -102,12 +190,43 @@ public:
         if (accessVar == indVar) {
           auto runLooplet = accessOp.getOperand(0).getDefiningOp<finch::RunOp>();
           if (!runLooplet) {
-            //accessOp.emitWarning() << "No Run Looplet";
             continue;
           }
-          // Replace Access to Run Value
+            
           Value runValue = runLooplet.getOperand(); 
-          rewriter.replaceOp(&accessOp, runValue);
+
+          if (accessOp.getResultTypes()[0].isIndex()) {
+            WalkResult walkResult = forOp.walk<WalkOrder::PreOrder>([&](finch::AccessOp aOp) {
+                bool isFinalLevel = !(aOp->getResultTypes()[0].isIndex());
+                if (!isFinalLevel) {
+                  return WalkResult::advance();
+                }
+               
+                // is final level aOp dependent to the accessOp?
+                // if so, replace the value with run value
+                Operation* op_ = aOp;
+                while (isa<finch::AccessOp>(op_) || isa<finch::GetLevelOp>(op_)) {
+                  if (isa<finch::AccessOp>(op_)) {
+                    Operation* lvl = op_->getOperand(0).getDefiningOp();
+                    op_ = lvl;
+                  } else if (isa<finch::GetLevelOp>(op_)) {
+                    Operation* access = op_->getOperand(1).getDefiningOp();
+                    op_ = access;
+                    if (access == &accessOp) {
+                      rewriter.replaceOp(aOp, runValue);
+                      return WalkResult::interrupt();
+                    }
+                  } 
+                }
+                
+                return WalkResult::advance();
+              }
+            );
+          } else {
+            // Replace Access to Run Value
+            rewriter.replaceOp(&accessOp, runValue);
+          }
+
 
           return success();
         }
@@ -360,14 +479,29 @@ public:
   }
 };
 
-class FinchSwitchBarFoo
-    : public impl::FinchSwitchBarFooBase<FinchSwitchBarFoo> {
+class FinchInstantiate
+    : public impl::FinchInstantiateBase<FinchInstantiate> {
 public:
-  using impl::FinchSwitchBarFooBase<
-      FinchSwitchBarFoo>::FinchSwitchBarFooBase;
+  using impl::FinchInstantiateBase<
+      FinchInstantiate>::FinchInstantiateBase;
   void runOnOperation() final {
     RewritePatternSet patterns(&getContext());
-    //patterns.add<FinchSwitchBarFooRewriter>(&getContext());
+    patterns.add<FinchInstantiateRewriter>(&getContext());
+    patterns.add<FinchNextLevelRewriter>(&getContext());
+    FrozenRewritePatternSet patternSet(std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
+      signalPassFailure();
+  }
+};
+
+
+class FinchSimplifier
+    : public impl::FinchSimplifierBase<FinchSimplifier> {
+public:
+  using impl::FinchSimplifierBase<
+      FinchSimplifier>::FinchSimplifierBase;
+  void runOnOperation() final {
+    RewritePatternSet patterns(&getContext());
     patterns.add<FinchMemrefStoreLoadRewriter>(&getContext());
     FrozenRewritePatternSet patternSet(std::move(patterns));
     if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
@@ -383,6 +517,8 @@ public:
   void runOnOperation() final {
     RewritePatternSet patterns(&getContext());
     patterns.add<FinchLoopletRunRewriter>(&getContext());
+    patterns.add<FinchMemrefStoreLoadRewriter>(&getContext());
+    patterns.add<FinchSemiringRewriter>(&getContext());
     FrozenRewritePatternSet patternSet(std::move(patterns));
     if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
       signalPassFailure();

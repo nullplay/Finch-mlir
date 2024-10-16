@@ -18,6 +18,7 @@ include "mlir/Interfaces/DestinationStyleOpInterface.td"
 include "mlir/Interfaces/ParallelCombiningOpInterface.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 def Finch_FooOp : Finch_Op<"foo", [Pure,
                                              SameOperandsAndResultType]> {
@@ -47,6 +48,7 @@ def Finch_FooOp : Finch_Op<"foo", [Pure,
 }
 
 
+
 def Finch_AccessOp : Finch_Op<"access", [Pure]> {
     let summary = "Finch Access op";
     let description = [{
@@ -56,7 +58,8 @@ def Finch_AccessOp : Finch_Op<"access", [Pure]> {
     }];
 
     let arguments = (ins Finch_LoopletType:$input, Index:$idx); 
-    let results = (outs LoopletOrNumber:$res);
+    //let results = (outs LoopletOrNumber:$res);
+    let results = (outs AnyType:$res);
 
     let assemblyFormat = [{
         $input `,` $idx attr-dict `:` type($res)
@@ -67,15 +70,15 @@ def Finch_NextLevelOp : Finch_Op<"nextlevel", [Pure]> {
     let summary = "Finch NextLevel Looplets";
     let description = [{
         ```mlir
-        %3 = finch.nextlevel %val : looplet -> looplet
+        %3 = finch.nextlevel %pos : Index -> looplet
         ```
     }];
 
-    let arguments = (ins Finch_LoopletType:$val); 
+    let arguments = (ins Index:$pos); 
     let results = (outs Finch_LoopletType:$res);
 
     let assemblyFormat = [{
-        $val attr-dict `:` `(` type($val) `)` `->` `(` type($res) `)`
+        $pos attr-dict `:` `(` type($pos) `)` `->` `(` type($res) `)`
     }];
 }
 
@@ -155,7 +158,38 @@ def Finch_ReturnOp : Finch_Op<"return", [Pure, Terminator, ReturnLike]> {
     }];
 }
 
+def Finch_DefineLevelOp : Finch_Op<"definelevel", [Pure]> {
+    let summary = "Finch Define Level op";
+    let description = [{
+        ```mlir
+        %2 = finch.definelevel 
+        ```
+    }];
+
+    let regions = (region AnyRegion:$def);
+    let results = (outs Finch_LoopletType:$res);
+
+    let assemblyFormat = [{ 
+        $def attr-dict  
+    }];
+}
 
 
+def Finch_GetLevelOp : Finch_Op<"getlevel", [Pure]> {
+    let summary = "Finch getlevel op";
+    let description = [{
+        ```mlir
+        %2 = finch.definelevel 
+        ```
+    }];
+
+    let arguments = (ins Finch_LoopletType:$level,
+                         Index:$pos); 
+    let results = (outs Finch_LoopletType:$res);
+
+    let assemblyFormat = [{ 
+        $level `,` $pos attr-dict `:` `(` type($level) `,` type($pos) `)` `->` `(` type($res) `)`
+    }];
+}
 
 #endif // FINCH_OPS
