@@ -16,6 +16,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 
 #include "Finch/FinchPasses.h"
 #include "llvm/Support/Debug.h"
@@ -121,6 +122,18 @@ public:
   }
 };
 
+class FinchLoopInvariantCodeMotion : public OpRewritePattern<scf::ForOp> {
+public:
+  using OpRewritePattern<scf::ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(scf::ForOp op,
+                                PatternRewriter &rewriter) const {
+    size_t numMoved = moveLoopInvariantCode(op);
+    //op->walk(
+    //  [&](LoopLikeOpInterface loopLike) { moveLoopInvariantCode(loopLike); });
+    return numMoved > 0 ? success() : failure();
+  }
+};
 
 
 class FinchMemrefStoreLoadRewriter : public OpRewritePattern<memref::StoreOp> {
@@ -390,7 +403,7 @@ public:
             // We don't want to erase original Stepper when lowering
             // because of other use.
             // So everytime we lower Stepper, clone it.
-            llvm::outs() << *looplet << "\n";
+            //llvm::outs() << *looplet << "\n";
             Operation* clonedStepper = rewriter.clone(*looplet);  
             stepperLooplets.push_back(cast<finch::StepperOp>(clonedStepper));
             accessOps.push_back(cast<finch::AccessOp>(accessOp));
@@ -556,8 +569,9 @@ public:
       FinchInstantiate>::FinchInstantiateBase;
   void runOnOperation() final {
     RewritePatternSet patterns(&getContext());
-    patterns.add<FinchInstantiateRewriter>(&getContext());
     patterns.add<FinchNextLevelRewriter>(&getContext());
+    patterns.add<FinchInstantiateRewriter>(&getContext());
+    patterns.add<FinchLoopInvariantCodeMotion>(&getContext());
     FrozenRewritePatternSet patternSet(std::move(patterns));
     if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
       signalPassFailure();
@@ -574,9 +588,11 @@ public:
     RewritePatternSet patterns(&getContext());
     patterns.add<FinchMemrefStoreLoadRewriter>(&getContext());
     patterns.add<FinchSemiringRewriter>(&getContext());
+    patterns.add<FinchLoopInvariantCodeMotion>(&getContext());
     FrozenRewritePatternSet patternSet(std::move(patterns));
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet))) {
       signalPassFailure();
+    }
   }
 };
 
@@ -646,10 +662,10 @@ public:
       FinchLoopletPass>::FinchLoopletPassBase;
   void runOnOperation() final {
     RewritePatternSet patterns(&getContext());
-    patterns.add<FinchMemrefStoreLoadRewriter>(&getContext());
     patterns.add<FinchLoopletRunRewriter>(&getContext());
     patterns.add<FinchLoopletSequenceRewriter>(&getContext()); 
     patterns.add<FinchLoopletStepperRewriter>(&getContext()); 
+    patterns.add<FinchLoopletLookupRewriter>(&getContext()); 
     FrozenRewritePatternSet patternSet(std::move(patterns));
     if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
       signalPassFailure();
