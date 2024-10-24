@@ -1,0 +1,126 @@
+name: Wheel
+
+on:
+  pull_request:
+    branches:
+      - main  # NOTE: to remove
+  push:
+    branches:
+      - main  # NOTE: to remove
+  schedule:
+    # At 09:00 on Monday. (see https://crontab.guru)
+    - cron: '0 9 * * 1'
+
+defaults:
+  run:
+    shell: bash -leo pipefail {0}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-wheel:
+    strategy:
+      matrix:
+        os: ['macos-13', 'macos-14']  # 'ubuntu-24.04', , 'windows-2022'
+        arch: ['x86_64', 'aarch64']
+        python: ['3.10']  # , '3.11', '3.12'
+        exclude:
+          - os: 'macos-13'
+            arch: 'aarch64'
+          - os: 'macos-14'
+            arch: 'x86_64'
+          - os: 'windows-2022'
+            arch: 'aarch64'
+
+    runs-on: ${{ matrix.os }}
+    env:
+      LLVM_SOURCE_DIR: ${{ github.workspace }}/llvm-project
+      FINCH_MLIR_SOURCE_DIR: ${{ github.workspace }}/Finch-mlir
+    steps:
+      - name: Checkout Finch-mlir
+        uses: actions/checkout@v4
+        with:
+          path: 'Finch-mlir'
+
+      - name: Checkout LLVM
+        uses: actions/checkout@v4
+        with:
+          repository: llvm/llvm-project
+          ref: '4091bc61e315f187829dca877dd908a07ba9cb91'  # Latest commit as of 2024-10-17
+          path: 'llvm-project'
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.python }}
+          max-size: "1G"
+          verbose: 2
+          variant: ccache
+
+      - name: Setup env
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: Finch-mlir/ci/environment.yml
+          init-shell: >-
+            bash
+          cache-environment: true
+          cache-downloads: true
+          post-cleanup: 'all'
+          create-args: >-
+            python=${{ matrix.python }}
+
+      - name: Build wheel
+        run: |
+          cp Finch-mlir/setup.py .
+          python -m build --wheel
+
+      # - name: Set up QEMU
+      #   if: ${{ matrix.os == 'ubuntu-24.04' && matrix.arch == 'aarch64' }}
+      #   uses: docker/setup-qemu-action@v2
+      #   with:
+      #     platforms: ${{ matrix.arch }}
+
+      # - name: cibuildwheel
+      #   run: |
+      #     CIBW_ARCHS=${{ matrix.arch }} \
+      #     cibuildwheel --output-dir ./dist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          path: dist/*.whl
+          name: artifact_finch_mlir-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.python }}
+
+  # TODO: run pydata/sparse MLIR tests
+  # run-tests:
+  #   ...
+
+  release-wheel:
+    runs-on: 'ubuntu-latest'
+    needs: build-wheel
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: artifact_finch_mlir-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: 'dist/*.whl'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: latest
+          name: latest
+          body: Latest release
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+          artifactErrorsFailBuild: true
